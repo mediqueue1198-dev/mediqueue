@@ -1,0 +1,636 @@
+-- ============================================================
+-- MediQueue - Complete Production Schema
+-- Consolidated Source of Truth (Snapshot: 2025-04-10)
+-- This file can be run in the Supabase SQL Editor or via CLI.
+-- ============================================================
+
+-- 0. EXTENSIONS & SEARCH PATH
+SET search_path TO public, extensions;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- 1. BASE TABLES
+-- ────────────────────────────────────────────────────────────
+
+-- Users profile table (extends auth.users)
+CREATE TABLE IF NOT EXISTS public.users (
+  id          UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email       TEXT NOT NULL,
+  full_name   TEXT NOT NULL,
+  phone       TEXT,
+  role        TEXT NOT NULL DEFAULT 'patient' CHECK (role IN ('patient', 'doctor', 'mediator')),
+  avatar_url  TEXT,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Patients
+CREATE TABLE IF NOT EXISTS public.patients (
+  id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id           UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  date_of_birth     DATE,
+  blood_type        TEXT CHECK (blood_type IN ('A+','A-','B+','B-','AB+','AB-','O+','O-','')),
+  allergies         TEXT[] DEFAULT '{}',
+  medical_history   TEXT[] DEFAULT '{}',
+  emergency_contact JSONB DEFAULT '{}',
+  insurance_info    JSONB DEFAULT '{}',
+  name              TEXT,
+  created_at        TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id)
+);
+
+-- Doctors
+CREATE TABLE IF NOT EXISTS public.doctors (
+  id                      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id                 UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  specialization          TEXT NOT NULL,
+  license_number          TEXT UNIQUE,
+  department              TEXT,
+  consultation_avg_time   INTEGER DEFAULT 15,
+  experience_years        INTEGER DEFAULT 0,
+  rating                  DECIMAL(2,1) DEFAULT 5.0,
+  bio                     TEXT,
+  availability_schedule   JSONB DEFAULT '{}',
+  is_available            BOOLEAN DEFAULT TRUE,
+  education               TEXT,
+  education_institution   TEXT,
+  hospital_name           TEXT,
+  location                TEXT,
+  name                    TEXT,
+  first_visit_fee         DECIMAL(10,2) DEFAULT 0,
+  follow_up_fee           DECIMAL(10,2) DEFAULT 0,
+  emergency_fee           DECIMAL(10,2) DEFAULT 0,
+  fixed_fee               DECIMAL(10,2) DEFAULT 0,
+  fee_type                TEXT DEFAULT 'by_visit_type' CHECK (fee_type IN ('by_visit_type','fixed','any')),
+  daily_capacity          INTEGER DEFAULT 30,
+  created_at              TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id)
+);
+
+-- Family members
+CREATE TABLE IF NOT EXISTS public.family_members (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  patient_id      UUID NOT NULL REFERENCES public.patients(id) ON DELETE CASCADE,
+  name            TEXT NOT NULL,
+  relationship    TEXT NOT NULL,
+  date_of_birth   DATE,
+  blood_type      TEXT,
+  notes           TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Appointments
+CREATE TABLE IF NOT EXISTS public.appointments (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  patient_id      UUID NOT NULL REFERENCES public.users(id),
+  doctor_id       UUID NOT NULL REFERENCES public.doctors(id),
+  scheduled_time  TIMESTAMPTZ NOT NULL,
+  visit_type      TEXT NOT NULL DEFAULT 'first_visit'
+                  CHECK (visit_type IN ('first_visit','follow_up','emergency')),
+  symptoms        TEXT,
+  status          TEXT NOT NULL DEFAULT 'pending'
+                  CHECK (status IN ('pending','confirmed','completed','cancelled','no_show')),
+  notes           TEXT,
+  family_member_id UUID REFERENCES public.family_members(id) ON DELETE SET NULL,
+  payment_method   TEXT CHECK (payment_method IN ('cash','card','upi')),
+  payment_status   TEXT DEFAULT 'pending' CHECK (payment_status IN ('pending','paid','partial','waived')),
+  consultation_fee DECIMAL(10,2) DEFAULT 0,
+  additional_charges DECIMAL(10,2) DEFAULT 0,
+  additional_charges_details JSONB DEFAULT '[]',
+  total_amount    DECIMAL(10,2) DEFAULT 0,
+  paid_amount     DECIMAL(10,2) DEFAULT 0,
+  payment_time     TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Queue entries
+CREATE TABLE IF NOT EXISTS public.queue_entries (
+  id                          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  doctor_id                   UUID NOT NULL REFERENCES public.doctors(id),
+  patient_id                  UUID NOT NULL REFERENCES public.users(id),
+  appointment_id              UUID REFERENCES public.appointments(id),
+  queue_type                  TEXT NOT NULL DEFAULT 'walk_in'
+                              CHECK (queue_type IN ('appointment','walk_in','emergency')),
+  token_number                TEXT NOT NULL,
+  priority_score              INTEGER DEFAULT 100,
+  predicted_consultation_time INTEGER DEFAULT 15,
+  status                      TEXT NOT NULL DEFAULT 'waiting'
+                              CHECK (status IN ('waiting','in_consultation','completed','skipped','no_show','cancelled')),
+  check_in_status             BOOLEAN DEFAULT FALSE,
+  check_in_time               TIMESTAMPTZ,
+  called_at                   TIMESTAMPTZ,
+  completed_at                 TIMESTAMPTZ,
+  family_member_id            UUID REFERENCES public.family_members(id) ON DELETE SET NULL,
+  arrival_status              TEXT DEFAULT 'pending' CHECK (arrival_status IN ('pending', 'arrived', 'late', 'no_show')),
+  queue_position              INTEGER,
+  created_at                  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Medical records
+CREATE TABLE IF NOT EXISTS public.medical_records (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  patient_id      UUID NOT NULL REFERENCES public.users(id),
+  doctor_id       UUID NOT NULL REFERENCES public.doctors(id),
+  appointment_id  UUID REFERENCES public.appointments(id),
+  diagnosis       TEXT NOT NULL,
+  prescription    JSONB DEFAULT '[]',
+  notes           TEXT,
+  attachments     TEXT[] DEFAULT '{}',
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Messages
+CREATE TABLE IF NOT EXISTS public.messages (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  sender_id   UUID NOT NULL REFERENCES public.users(id),
+  receiver_id UUID NOT NULL REFERENCES public.users(id),
+  content     TEXT NOT NULL,
+  read        BOOLEAN DEFAULT FALSE,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Notifications
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id     UUID NOT NULL REFERENCES public.users(id),
+  user_role   TEXT CHECK (user_role IN ('patient', 'doctor', 'mediator')),
+  title       TEXT NOT NULL,
+  message     TEXT NOT NULL,
+  type        TEXT DEFAULT 'system'
+              CHECK (type IN ('appointment','queue','medical','message','system')),
+  is_read     BOOLEAN DEFAULT FALSE,
+  metadata    JSONB DEFAULT '{}',
+  updated_at  TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Consultation History
+CREATE TABLE IF NOT EXISTS public.consultation_history (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  doctor_id       UUID NOT NULL REFERENCES public.doctors(id),
+  patient_id      UUID NOT NULL REFERENCES public.users(id),
+  queue_entry_id  UUID REFERENCES public.queue_entries(id),
+  duration_minutes INTEGER NOT NULL,
+  started_at      TIMESTAMPTZ NOT NULL,
+  ended_at        TIMESTAMPTZ NOT NULL,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Audit Logs
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    actor_id UUID REFERENCES auth.users(id),
+    action TEXT NOT NULL,
+    target_table TEXT,
+    target_id UUID,
+    payload JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. INDEXES
+-- ────────────────────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_appointments_patient   ON public.appointments(patient_id);
+CREATE INDEX IF NOT EXISTS idx_appointments_doctor    ON public.appointments(doctor_id);
+CREATE INDEX IF NOT EXISTS idx_queue_doctor           ON public.queue_entries(doctor_id);
+CREATE INDEX IF NOT EXISTS idx_queue_priority         ON public.queue_entries(priority_score DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_user     ON public.notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_consultation_history_doctor ON public.consultation_history(doctor_id);
+
+-- 3. CORE FUNCTIONS & RPCs
+-- ────────────────────────────────────────────────────────────
+
+-- Optimized Role Access (from JWT)
+CREATE OR REPLACE FUNCTION public.get_user_role()
+RETURNS TEXT AS $$
+  SELECT COALESCE(auth.jwt()->'user_metadata'->>'role', 'patient');
+$$ LANGUAGE SQL STABLE;
+
+-- Atomic Queue Management
+CREATE OR REPLACE FUNCTION public.call_next_patient(p_doctor_id UUID)
+RETURNS JSON AS $$
+DECLARE
+  v_next_entry RECORD;
+BEGIN
+  UPDATE public.queue_entries SET status = 'completed', completed_at = NOW()
+  WHERE doctor_id = p_doctor_id AND status = 'in_consultation';
+
+  SELECT q.*, u.full_name as patient_name FROM public.queue_entries q
+  JOIN public.users u ON u.id = q.patient_id
+  WHERE q.doctor_id = p_doctor_id AND q.status = 'waiting' AND q.check_in_status = true
+  ORDER BY q.priority_score DESC, q.created_at ASC LIMIT 1 INTO v_next_entry;
+
+  IF v_next_entry.id IS NULL THEN RETURN NULL; END IF;
+
+  UPDATE public.queue_entries SET status = 'in_consultation', called_at = NOW() WHERE id = v_next_entry.id;
+
+  RETURN json_build_object('id', v_next_entry.id, 'patient_id', v_next_entry.patient_id, 'patient_name', v_next_entry.patient_name, 'token_number', v_next_entry.token_number);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Priority Calculation Engine
+CREATE OR REPLACE FUNCTION public.calculate_entry_priority(p_entry public.queue_entries)
+RETURNS INTEGER AS $$
+DECLARE
+  score INTEGER := 0;
+  v_now TIMESTAMPTZ := NOW();
+  v_waiting_mins INTEGER;
+BEGIN
+  IF p_entry.queue_type = 'emergency' THEN score := 500;
+  ELSIF p_entry.queue_type = 'appointment' THEN score := 100;
+  ELSE score := 60; END IF;
+
+  v_waiting_mins := EXTRACT(EPOCH FROM (v_now - p_entry.created_at)) / 60;
+  score := score + v_waiting_mins;
+  IF p_entry.check_in_status THEN score := score + 80; END IF;
+  RETURN score;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+-- Hospital Metrics
+CREATE OR REPLACE FUNCTION public.get_hospital_realtime_metrics()
+RETURNS JSON AS $$
+DECLARE
+  v_total_today INTEGER;
+  v_waiting INTEGER;
+  v_completed INTEGER;
+BEGIN
+  SELECT COUNT(*) INTO v_total_today FROM public.queue_entries WHERE created_at >= CURRENT_DATE;
+  SELECT COUNT(*) INTO v_waiting FROM public.queue_entries WHERE status = 'waiting' AND created_at >= CURRENT_DATE;
+  SELECT COUNT(*) INTO v_completed FROM public.queue_entries WHERE status = 'completed' AND created_at >= CURRENT_DATE;
+  RETURN json_build_object('total_patients_today', v_total_today, 'active_queues', v_waiting, 'completed_consultations', v_completed);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 4. TRIGGERS
+-- ────────────────────────────────────────────────────────────
+
+-- Auto-profile on signup
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.users (id, email, full_name, phone, role)
+  VALUES (NEW.id, NEW.email, COALESCE(NEW.raw_user_meta_data->>'full_name', 'User'), NEW.raw_user_meta_data->>'phone', COALESCE(NEW.raw_user_meta_data->>'role', 'patient'));
+  IF COALESCE(NEW.raw_user_meta_data->>'role', 'patient') = 'patient' THEN
+    INSERT INTO public.patients (user_id) VALUES (NEW.id);
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Auto-priority update
+CREATE OR REPLACE FUNCTION public.trig_update_priority_score()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.priority_score := public.calculate_entry_priority(NEW);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER on_queue_entry_upsert BEFORE INSERT OR UPDATE ON public.queue_entries FOR EACH ROW EXECUTE FUNCTION public.trig_update_priority_score();
+
+-- 5. ROW LEVEL SECURITY (OPTIMIZED)
+-- ────────────────────────────────────────────────────────────
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.patients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.doctors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.appointments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.queue_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.medical_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+
+-- Dynamic Policies
+CREATE POLICY "users_select_optimized" ON public.users FOR SELECT USING (id = auth.uid() OR public.get_user_role() IN ('doctor', 'mediator') OR id IN (SELECT user_id FROM public.doctors));
+CREATE POLICY "messages_select_strict" ON public.messages FOR SELECT USING (sender_id = auth.uid() OR receiver_id = auth.uid());
+CREATE POLICY "notifs_select_strict" ON public.notifications FOR SELECT USING (user_id = auth.uid());
+CREATE POLICY "doctors_read_public" ON public.doctors FOR SELECT USING (TRUE);
+CREATE POLICY "audit_no_read" ON public.audit_logs FOR SELECT USING (FALSE);
+
+-- 6. REALTIME CONFIG
+-- ────────────────────────────────────────────────────────────
+ALTER PUBLICATION supabase_realtime ADD TABLE public.queue_entries, public.appointments, public.notifications, public.messages;
+-- Add location to appointments table
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS location TEXT;
+-- Auto-priority update fix
+CREATE OR REPLACE FUNCTION public.trig_update_priority_score()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.priority_score := public.calculate_entry_priority(NEW);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION public.calculate_priority_score(p_entry public.queue_entries)
+RETURNS INTEGER AS $$
+DECLARE
+  score INTEGER := 0;
+  v_now TIMESTAMPTZ := NOW();
+  v_waiting_mins INTEGER;
+BEGIN
+  IF p_entry.queue_type = 'emergency' THEN score := 500;
+  ELSIF p_entry.queue_type = 'appointment' THEN score := 100;
+  ELSE score := 60; END IF;
+
+  v_waiting_mins := EXTRACT(EPOCH FROM (v_now - p_entry.created_at)) / 60;
+  score := score + v_waiting_mins;
+  IF p_entry.check_in_status THEN score := score + 80; END IF;
+  RETURN score;
+END;
+$$ LANGUAGE plpgsql STABLE;
+-- ============================================================
+-- Migration: Walk-in patient registration RPC
+-- Fixes: FK violation when patient_id is a fake guest UUID
+-- ============================================================
+
+-- RPC to register a walk-in patient atomically
+-- Creates a guest user row + queue entry in a single transaction
+CREATE OR REPLACE FUNCTION register_walk_in_patient(
+  p_full_name TEXT,
+  p_phone TEXT,
+  p_doctor_id UUID,
+  p_symptoms TEXT DEFAULT '',
+  p_is_emergency BOOLEAN DEFAULT FALSE,
+  p_token TEXT DEFAULT NULL
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_user_id UUID;
+  v_entry_id UUID;
+  v_token TEXT;
+  v_queue_type TEXT;
+  v_priority_score INTEGER;
+  v_guest_email TEXT;
+BEGIN
+  -- Generate guest email
+  v_guest_email := 'walkin_' || floor(extract(epoch from now()))::text || '@mediqueue.local';
+  
+  -- Create or find existing guest user with this phone
+  SELECT id INTO v_user_id
+  FROM users
+  WHERE phone = p_phone AND role = 'patient'
+  LIMIT 1;
+
+  IF v_user_id IS NULL THEN
+    INSERT INTO users (full_name, phone, email, role)
+    VALUES (p_full_name, p_phone, v_guest_email, 'patient')
+    RETURNING id INTO v_user_id;
+  END IF;
+
+  -- Determine queue type and priority
+  v_queue_type := CASE WHEN p_is_emergency THEN 'emergency' ELSE 'walk_in' END;
+  v_priority_score := CASE WHEN p_is_emergency THEN 650 ELSE 300 END;
+  v_token := COALESCE(p_token, v_queue_type::text || '-' || floor(extract(epoch from now()))::text);
+
+  -- Insert queue entry
+  INSERT INTO queue_entries (
+    doctor_id,
+    patient_id,
+    appointment_id,
+    queue_type,
+    token_number,
+    priority_score,
+    predicted_consultation_time,
+    status,
+    check_in_status,
+    check_in_time,
+    arrival_status,
+    called_at,
+    completed_at
+  )
+  VALUES (
+    p_doctor_id,
+    v_user_id,
+    NULL,
+    v_queue_type,
+    v_token,
+    v_priority_score,
+    15,
+    'waiting',
+    TRUE,
+    NOW(),
+    'arrived',
+    NULL,
+    NULL
+  )
+  RETURNING id INTO v_entry_id;
+
+  RETURN v_entry_id;
+END;
+$$;
+
+-- Grant execute to authenticated users and anon (mediator is authenticated)
+GRANT EXECUTE ON FUNCTION register_walk_in_patient(TEXT, TEXT, UUID, TEXT, BOOLEAN, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION register_walk_in_patient(TEXT, TEXT, UUID, TEXT, BOOLEAN, TEXT) TO anon;
+-- ============================================================
+-- Migration: Enable Standalone Users (Walk-Ins)
+-- Fixes: "null value in column id of relation users"
+-- Removes rigid auth.users dependency for public profiles
+-- ============================================================
+
+-- 1. Remove the rigid foreign key constraint that requires an auth.users record
+ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_id_fkey;
+
+-- 2. Add a default UUID generator to public.users.id so guest accounts can be easily created
+ALTER TABLE public.users ALTER COLUMN id SET DEFAULT uuid_generate_v4();
+
+-- 3. To maintain the ON DELETE CASCADE behavior we lost, create a trigger on auth.users
+CREATE OR REPLACE FUNCTION public.handle_auth_user_delete()
+RETURNS TRIGGER AS $$
+BEGIN
+  DELETE FROM public.users WHERE id = OLD.id;
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Drop trigger if exists to avoid conflicts upon re-runs
+DROP TRIGGER IF EXISTS on_auth_user_deleted ON auth.users;
+
+-- Create the trigger so when an auth record is deleted, its public profile is removed
+CREATE TRIGGER on_auth_user_deleted
+  AFTER DELETE ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_auth_user_delete();
+
+-- 4. Re-create the walk in RPC just to be absolutely certain it expects the default
+CREATE OR REPLACE FUNCTION register_walk_in_patient(
+  p_full_name TEXT,
+  p_phone TEXT,
+  p_doctor_id UUID,
+  p_symptoms TEXT DEFAULT '',
+  p_is_emergency BOOLEAN DEFAULT FALSE,
+  p_token TEXT DEFAULT NULL
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_user_id UUID;
+  v_entry_id UUID;
+  v_token TEXT;
+  v_queue_type TEXT;
+  v_priority_score INTEGER;
+  v_guest_email TEXT;
+BEGIN
+  v_guest_email := 'walkin_' || floor(extract(epoch from now()))::text || '@mediqueue.local';
+  
+  SELECT id INTO v_user_id
+  FROM users
+  WHERE phone = p_phone AND role = 'patient'
+  LIMIT 1;
+
+  IF v_user_id IS NULL THEN
+    INSERT INTO users (full_name, phone, email, role)
+    VALUES (p_full_name, p_phone, v_guest_email, 'patient')
+    RETURNING id INTO v_user_id;
+
+    -- Also create patient profile
+    INSERT INTO patients (user_id) VALUES (v_user_id);
+  END IF;
+
+  v_queue_type := CASE WHEN p_is_emergency THEN 'emergency' ELSE 'walk_in' END;
+  v_priority_score := CASE WHEN p_is_emergency THEN 650 ELSE 300 END;
+  v_token := COALESCE(p_token, v_queue_type::text || '-' || floor(extract(epoch from now()))::text);
+
+  INSERT INTO queue_entries (
+    doctor_id, patient_id, queue_type, token_number, priority_score,
+    predicted_consultation_time, status, check_in_status, check_in_time, arrival_status
+  )
+  VALUES (
+    p_doctor_id, v_user_id, v_queue_type, v_token, v_priority_score,
+    15, 'waiting', TRUE, NOW(), 'arrived'
+  )
+  RETURNING id INTO v_entry_id;
+
+  RETURN v_entry_id;
+END;
+$$;
+-- ============================================================
+-- Migration: Fix Priority Trigger Logic
+-- Fixes: "record p_entry has no field scheduled_time"
+-- Resolves the issue where queue_entries lacks scheduled_time
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.calculate_entry_priority(p_entry public.queue_entries)
+ RETURNS integer
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+DECLARE
+  score INTEGER := 0;
+  v_now TIMESTAMPTZ := NOW();
+  v_waiting_mins INTEGER;
+  v_late_mins INTEGER;
+  v_early_mins INTEGER;
+  v_scheduled_time TIMESTAMPTZ;
+BEGIN
+  -- Base weights following frontend engine logic
+  IF p_entry.queue_type = 'emergency' THEN 
+    score := score + 500;
+  ELSIF p_entry.queue_type = 'appointment' THEN 
+    score := score + 100;
+  ELSE 
+    score := score + 60; -- walk_in
+  END IF;
+
+  -- Waiting time bonus (1 point per minute)
+  v_waiting_mins := EXTRACT(EPOCH FROM (v_now - p_entry.created_at)) / 60;
+  score := score + v_waiting_mins;
+
+  -- Fetch scheduled_time if appointment
+  IF p_entry.queue_type = 'appointment' AND p_entry.appointment_id IS NOT NULL THEN
+    SELECT scheduled_time INTO v_scheduled_time FROM public.appointments WHERE id = p_entry.appointment_id;
+  END IF;
+
+  -- Check-in bonus and early arrival
+  IF p_entry.check_in_status THEN
+    score := score + 80;
+    
+    IF p_entry.queue_type = 'appointment' AND p_entry.check_in_time IS NOT NULL AND v_scheduled_time IS NOT NULL THEN
+       v_early_mins := EXTRACT(EPOCH FROM (v_scheduled_time - p_entry.check_in_time)) / 60;
+       IF v_early_mins >= 5 THEN
+          score := score + 20 + (FLOOR(v_early_mins / 5)::INTEGER * 2);
+       END IF;
+    END IF;
+  END IF;
+
+  -- Lateness penalty for appointments
+  IF p_entry.queue_type = 'appointment' AND v_scheduled_time IS NOT NULL THEN
+    IF v_now > v_scheduled_time THEN
+      v_late_mins := EXTRACT(EPOCH FROM (v_now - v_scheduled_time)) / 60;
+      score := score - (FLOOR(v_late_mins / 5)::INTEGER * 30);
+      -- Prevent appointments from falling below walk-ins entirely if only slightly late
+      IF score < 70 THEN score := 70; END IF;
+    END IF;
+  END IF;
+
+  RETURN score;
+END;
+$function$;
+-- ============================================================
+-- Migration: Fix get_user_role for RLS
+-- Fixes: Silent relation drop due to JWT metadata sync loops
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.get_user_role()
+ RETURNS text
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+AS $function$
+DECLARE
+  v_role text;
+BEGIN
+  -- Pull standard DB validated role first, avoiding stale JWT caches
+  SELECT role INTO v_role FROM public.users WHERE id = auth.uid();
+  
+  -- Prevent totally null returns by checking JWT metadata
+  IF v_role IS NULL THEN
+    v_role := COALESCE(auth.jwt()->'user_metadata'->>'role', 'patient');
+  END IF;
+
+  RETURN v_role;
+END;
+$function$;
+CREATE OR REPLACE FUNCTION public.notify_consultation_near(p_doctor_id uuid, p_threshold integer DEFAULT 3)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+  entry RECORD;
+  patients_ahead INTEGER;
+BEGIN
+  FOR entry IN 
+    SELECT q.id, q.patient_id, q.queue_position
+    FROM public.queue_entries q
+    WHERE q.doctor_id = p_doctor_id
+      AND q.status = 'waiting'
+      AND q.check_in_status = true
+    ORDER BY q.priority_score DESC
+  LOOP
+    -- Count patients ahead
+    SELECT COUNT(*) INTO patients_ahead
+    FROM public.queue_entries
+    WHERE doctor_id = p_doctor_id
+      AND status = 'waiting'
+      AND check_in_status = true
+      AND priority_score > (
+        SELECT priority_score FROM public.queue_entries WHERE id = entry.id
+      );
+
+    IF patients_ahead <= p_threshold THEN
+      -- Send notification using 'queue' type rather than invalid 'CONSULTATION_NEAR' string
+      PERFORM public.send_notification(
+        entry.patient_id,
+        'patient',
+        'Your consultation is coming soon',
+        'Please stay nearby. You will be called soon.',
+        'queue',
+        jsonb_build_object('doctor_id', p_doctor_id, 'queue_entry_id', entry.id, 'patients_ahead', patients_ahead)
+      );
+    END IF;
+  END LOOP;
+END;
+$function$;

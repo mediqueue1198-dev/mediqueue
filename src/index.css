@@ -1,0 +1,274 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply font-sans text-surface-800 bg-surface-50 antialiased;
+    min-height: 100vh;
+  }
+
+  #root {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  input, textarea, select {
+    @apply outline-none;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-surface-100;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-surface-300 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-surface-400;
+  }
+}
+
+@layer components {
+  /* Card styles */
+  .card {
+    @apply bg-white rounded-2xl shadow-soft border border-surface-100;
+  }
+
+  .card-hover {
+    @apply card transition-all duration-200 hover:shadow-md hover:-translate-y-0.5;
+  }
+
+  /* Badge styles */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-primary {
+    @apply badge bg-primary-100 text-primary-700;
+  }
+
+  .badge-success {
+    @apply badge bg-medical-100 text-medical-700;
+  }
+
+  .badge-danger {
+    @apply badge bg-danger-100 text-danger-700;
+  }
+
+  .badge-warning {
+    @apply badge bg-warning-100 text-warning-700;
+  }
+
+  .badge-neutral {
+    @apply badge bg-surface-100 text-surface-600;
+  }
+
+  /* Button base */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500 shadow-sm hover:shadow-md;
+  }
+
+  .btn-secondary {
+    @apply btn bg-surface-100 text-surface-700 hover:bg-surface-200 focus:ring-surface-400;
+  }
+
+  .btn-danger {
+    @apply btn bg-danger-500 text-white hover:bg-danger-600 focus:ring-danger-400;
+  }
+
+  .btn-success {
+    @apply btn bg-medical-500 text-white hover:bg-medical-600 focus:ring-medical-400;
+  }
+
+  .btn-ghost {
+    @apply btn text-surface-600 hover:bg-surface-100 focus:ring-surface-400;
+  }
+
+  .btn-outline {
+    @apply btn border border-primary-600 text-primary-600 hover:bg-primary-50 focus:ring-primary-400;
+  }
+
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs rounded-lg;
+  }
+
+  .btn-lg {
+    @apply px-6 py-3 text-base;
+  }
+
+  /* Input styles */
+  .input-field {
+    @apply w-full px-3.5 py-2.5 rounded-xl border border-surface-200 bg-white text-surface-800 text-sm placeholder-surface-400
+           transition-all duration-200
+           focus:border-primary-500 focus:ring-2 focus:ring-primary-100
+           disabled:bg-surface-50 disabled:text-surface-400 disabled:cursor-not-allowed;
+  }
+
+  .input-error {
+    @apply border-danger-400 focus:border-danger-500 focus:ring-danger-100;
+  }
+
+  /* Label */
+  .form-label {
+    @apply block text-sm font-medium text-surface-700 mb-1.5;
+  }
+
+  /* Sidebar nav item */
+  .nav-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer;
+  }
+
+  .nav-item-active {
+    @apply nav-item bg-primary-600 text-white shadow-sm;
+  }
+
+  .nav-item-inactive {
+    @apply nav-item text-surface-600 hover:bg-surface-100 hover:text-surface-800;
+  }
+
+  /* Stats */
+  .stat-card {
+    @apply card p-5;
+  }
+
+  /* Queue token */
+  .token-display {
+    @apply flex items-center justify-center w-16 h-16 rounded-2xl font-display font-bold text-2xl;
+  }
+
+  /* Table */
+  .table-header {
+    @apply text-xs font-semibold text-surface-500 uppercase tracking-wide;
+  }
+
+  /* Glassmorphism */
+  .glass {
+    @apply bg-white/20 backdrop-blur-md border border-white/30;
+  }
+
+  .glass-dark {
+    @apply bg-surface-900/80 backdrop-blur-md border border-white/10;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .gradient-primary {
+    background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+  }
+
+  .gradient-medical {
+    background: linear-gradient(135deg, #059669 0%, #0891b2 100%);
+  }
+
+  .gradient-danger {
+    background: linear-gradient(135deg, #e11d48 0%, #ea580c 100%);
+  }
+
+  .gradient-warning {
+    background: linear-gradient(135deg, #d97706 0%, #ca8a04 100%);
+  }
+
+  .animate-number {
+    transition: all 0.5s ease-out;
+  }
+
+  /* Custom Professional Animations */
+  @keyframes fade-in-up {
+    from { opacity: 0; transform: translateY(15px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes float {
+    0% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+    100% { transform: translateY(0px); }
+  }
+
+  .animate-fade-in-up {
+    animation: fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  /* Glassmorphism Refinements */
+  .glass-card {
+    @apply bg-white/70 backdrop-blur-lg border border-white/40;
+    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+  }
+
+  .premium-shadow {
+    box-shadow: 
+      0 10px 15px -3px rgba(0, 0, 0, 0.04), 
+      0 4px 6px -4px rgba(0, 0, 0, 0.02),
+      inset 0 2px 4px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  /* Page Transitions */
+  .page-enter {
+    @apply animate-fade-in-up;
+  }
+}
+
+/* Queue display board TV mode specific */
+.tv-mode {
+  background: #0f172a;
+  color: white;
+}
+
+.tv-token {
+  font-size: clamp(3rem, 8vw, 7rem);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+}
+
+/* Toast customization */
+.toast-success {
+  @apply !bg-medical-600 !text-white;
+}
+
+.toast-error {
+  @apply !bg-danger-600 !text-white;
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
