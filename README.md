@@ -1,49 +1,74 @@
-# MediQueue - Smart Hospital Queue Management System
+<div align="center">
+  <h1>MediQueue 🏥⏳</h1>
+  <p><strong>A Modern, Real-Time Hospital Queue Management System</strong></p>
 
-## Features
-- **Authentication**: Email/password + Google OAuth
-- **Multi-Role Access**: Separate dashboards for Patients, Doctors, and Hospital Staff
-- **Smart Appointments**: AI-powered slot generation with load balancing
-- **Walk-in Management**: Quick patient registration for walk-in visits
-- **Real-time Queue**: Live queue updates with intelligent priority scoring
-- **Analytics**: Comprehensive reporting and earnings tracking
-- **Public Display**: Live queue display board for waiting areas
-- **Messaging**: Internal messaging between patients, doctors, and staff
-- **Medical Records**: Doctor consultation notes and prescriptions
-- **Family Members**: Manage family member appointments
+  <p>
+    <img src="https://img.shields.io/badge/React-19.2-blue?style=for-the-badge&logo=react" alt="React" />
+    <img src="https://img.shields.io/badge/TypeScript-5.4-blue?style=for-the-badge&logo=typescript" alt="TypeScript" />
+    <img src="https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC?style=for-the-badge&logo=tailwind-css" alt="TailwindCSS" />
+    <img src="https://img.shields.io/badge/Supabase-Database-3ECF8E?style=for-the-badge&logo=supabase" alt="Supabase" />
+    <img src="https://img.shields.io/badge/Zustand-State-black?style=for-the-badge&logo=react" alt="Zustand" />
+  </p>
+</div>
 
-## Technology Stack
+---
 
-### Frontend
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| React | 19.2.4 | UI Framework |
-| React Router | 7.14.0 | Routing |
-| TypeScript | 5.4.5 | Type Safety |
-| Zustand | 5.0.12 | State Management |
-| Tailwind CSS | 3.4.19 | Styling |
-| Lucide React | 1.7.0 | Icons |
-| Recharts | 3.8.1 | Charts |
-| React Hook Form | 7.72.1 | Form handling |
-| Zod | 4.3.6 | Validation |
-| React Hot Toast | 2.6.0 | Notifications |
+## 🎯 About The Project
 
-### Backend (Supabase)
-| Service | Purpose |
-|---------|---------|
-| PostgreSQL | Database |
-| Auth | User authentication |
-| Row Level Security | Data protection |
-| Realtime | Live queue updates |
+**MediQueue** is an enterprise-grade, real-time hospital queue management platform designed to eliminate waiting room congestion and streamline patient-doctor interactions. Built with a modern React stack and powered by Supabase, it provides tailored, role-based dashboards for Patients, Doctors, and Hospital Administrators (Mediators). 
 
-### Development
-| Tool | Purpose |
-|------|---------|
-| Vite | Build tool |
-| ESLint | Code linting |
-| Vitest | Testing |
+By leveraging **real-time database subscriptions** and an **intelligent, starvation-proof queueing algorithm**, MediQueue ensures fair patient distribution and provides live updates to all stakeholders, demonstrating a strong grasp of complex state management and full-stack integration.
 
-## Getting Started
+### ✨ What Makes This Project Stand Out?
+
+- **Real-Time Data Sync:** Implemented via Supabase Realtime channels. If a doctor updates a queue status, all connected displays and patient devices update instantaneously.
+- **Complex Queueing Algorithm:** Beyond simple FIFO, the system handles priority scoring, doctor break modes, auto-requeuing for skipped patients, and prevents queue starvation.
+- **Robust Authentication Flow:** Custom Role-Based Access Control (RBAC) tightly integrated with Google OAuth and traditional Email/Password authentication.
+- **Enterprise-Level Security:** Strict Row Level Security (RLS) policies at the database level to ensure data privacy, demonstrating an understanding of secure backend architectures.
+- **Modern UI/UX:** Built a completely responsive, accessible, and visually striking interface using Tailwind CSS, proving an eye for modern design aesthetics.
+
+---
+
+## 🚀 Key Features
+
+### 👥 Multi-Role Architecture
+- **Patients:** Live queue tracking, intelligent estimated wait times (EWT), digital prescriptions access, and cross-device syncing.
+- **Doctors:** Intuitive queue control, dynamic break-time management, and daily analytics dashboards.
+- **Administrators (Mediators):** God-view of the entire queue, walk-in registration flows, and load-balancing tools.
+
+### 🧠 Smart Queue Management
+- **Starvation-Proof Logic:** Ensures fair treatment schedules even under heavy load.
+- **Live Status Tracking:** Granular state transitions (`Waiting` → `In Consultation` → `Completed` / `Skipped`).
+- **Edge-Case Handling:** Graceful handling of edge cases like noshows, unexpected doctor breaks, and emergency walk-ins.
+
+### 🛡 Security & Validation
+- **Auth Providers:** Dual login capabilities (Google OAuth + Email).
+- **Data Protection:** Database-enforced RLS guarantees users only access authorized data chunks.
+- **Robust Forms:** Type-safe, end-to-end validated forms via Zod and React Hook Form.
+
+---
+
+## 💻 Tech Stack Deep Dive
+
+| Layer | Technology | Why I Chose It |
+| :--- | :--- | :--- |
+| **Frontend** | React (v19) | For a highly interactive, component-driven UI utilizing the latest React features. |
+| **Language** | TypeScript | To catch bugs at compile-time, enforce self-documenting code, and ensure strict type-safety across the app. |
+| **State Management**| Zustand | Selected for its minimalistic API, solving prop-drilling without the immense boilerplate of Redux. |
+| **Styling** | Tailwind CSS | Utility-first CSS for rapid, scalable, and highly custom frontend development without leaving the JSX. |
+| **Forms** | React Hook Form + Zod | For performant, unmanaged form state scaling coupled with bulletproof schema validation. |
+| **Backend & DB** | Supabase (PostgreSQL) | Managed Postgres with built-in Auth, instant APIs, and crucial Realtime websocket capabilities. |
+
+---
+
+## 🏗 System Architecture Highlights
+- **Database Schema:** A highly relational model mapping Users, Profiles, Appointments, and Queue Entries.
+- **Automated Triggers:** Extensive use of PL/pgSQL database triggers to automatically manage appointment statuses and sync state.
+- **Modular Frontend Architecture:** Clean separation of concerns with isolated Context/Zustand stores, encapsulated custom hooks (e.g., `useQueue`), and granular UI components.
+
+---
+
+## 🛠️ Getting Started
 
 ### Prerequisites
 - Node.js 18+
@@ -52,114 +77,36 @@
 ### Installation
 
 ```bash
-# Clone the repository
+# 1. Clone the repository
 git clone https://github.com/mediqueue1198-dev/mediqueue.git
 
-# Navigate to project
+# 2. Navigate into the project
 cd mediqueue
 
-# Install dependencies
+# 3. Install dependencies
 npm install
 
-# Setup environment
+# 4. Setup environment variables
 cp .env.example .env
-# Add your Supabase credentials:
-# VITE_SUPABASE_URL=your_supabase_url
-# VITE_SUPABASE_ANON_KEY=your_anon_key
+# (Add your VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env)
 
-# Enable Google OAuth in Supabase Dashboard:
-# 1. Go to Authentication → Providers → Google
-# 2. Add Google Client ID and Secret
-# 3. Configure redirect URIs:
-#    - http://localhost:5173/auth/callback/google (development)
-#    - https://your-production-domain.com/auth/callback/google (production)
-
-# Security Warning: The `.env` file contains sensitive credentials. NEVER commit this file to version control. Ensure it is listed in `.gitignore` (which it is in this project). Always keep your credentials secret.
-```
-
-### Database Setup
-
-```bash
-# Run migrations in Supabase SQL Editor
-# 1. Copy the contents of supabase/master_schema.sql
-# 2. Paste and Execute in the Supabase SQL Editor
-```
-
-### Run Development Server
-
-```bash
+# 5. Start the development server
 npm run dev
 ```
 
-Visit `http://localhost:5173`
-
-### Build for Production
-
-```bash
-npm run build
-npm run preview
-```
-
-## Security Features
-
-- **Row Level Security (RLS)** - Database-level protection
-- **Role-based Access** - Patient/Doctor/Staff separation
-- **Protected Routes** - Frontend route guards
-- **Secure Auth** - Supabase authentication with Google OAuth support
-- **Input Validation** - Zod schema validation
-
-## User Roles and Authentication
-
-MediQueue supports three primary user roles:
-- **Patient**: Access to patient dashboard, appointment booking, queue status, medical records
-- **Doctor**: Access to doctor queue, consultation screen, earnings, patient history
-- **Mediator (Staff)**: Access to queue control, walk-in registration, doctor management, reports
-
-### Authentication Methods
-1. **Email/Password**: Traditional registration and login
-2. **Google OAuth**: Sign in with Google account
-
-### Google OAuth Flow
-1. User clicks "Sign in with Google" on login page
-2. User authenticates with Google and grants permissions
-3. After consent, user is redirected back to the application
-4. If it's the first time using Google OAuth, user is prompted to complete their profile (select role, provide phone number, etc.)
-5. Once profile is complete, user is redirected to their respective dashboard based on selected role
-
-## Google OAuth Configuration
-
-To enable Google authentication:
-
-1. **In Supabase Dashboard**:
-   - Go to Authentication → Providers
-   - Enable Google provider
-   - Add your Google Client ID and Secret
-   - Add redirect URIs for development and production
-
-2. **In Google Cloud Console**:
-   - Create a project and enable Google+ API
-   - Create OAuth 2.0 credentials
-   - Add authorized redirect URI: `http://localhost:5173/auth/callback/google` (for development)
-
-## Contributing
-
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open Pull Request
-
-## License
-
-MIT License - see [LICENSE](LICENSE) for details.
-
-## Author
-
-**MediQueue Project**
-- GitHub: [@mediqueue1198-dev](https://github.com/mediqueue1198-dev)
-- Email: [project@mediqueue.com](mailto:project@mediqueue.com)
+### Database Provisioning
+Simply copy the contents of `supabase/master_schema.sql` and run it in your Supabase SQL Editor. This will instantly provision all required tables, functions, triggers, and RLS policies.
 
 ---
+
+## 👨‍💻 Let's Connect!
+
+I am actively open to **Software Engineering** and **Frontend Developer** opportunities! 
+If you find my architectural choices, code quality, or feature implementation in this project interesting, I'd love to chat.
+
+- **GitHub:** [@mediqueue1198-dev](https://github.com/mediqueue1198-dev) 
+- **Email:** [mediqueue1198@gmail.com](mailto:mediqueue1198@gmail.com) 
+
 <p align="center">
-  Made with ❤️ by MediQueue Team
+  <i>Demonstrating clean code, scalable architecture, and modern web technologies.</i>
 </p>
