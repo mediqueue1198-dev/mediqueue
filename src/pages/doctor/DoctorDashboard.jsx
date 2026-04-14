@@ -57,9 +57,9 @@ export default function DoctorDashboard() {
 
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-          <StatsCard title="Waiting" value={waitingCount} subtitle="in queue" icon={Clock} color="warning" glass />
-          <StatsCard title="Completed" value={completedToday} subtitle="today" icon={CheckCircle} color="success" glass />
-          <StatsCard title="Appointments" value={today.length} icon={Calendar} color="primary" glass />
+          <StatsCard title="Waiting" value={waitingCount} subtitle="in queue" icon={Clock} color="warning" glass to="/doctor/queue" />
+          <StatsCard title="Completed" value={completedToday} subtitle="today" icon={CheckCircle} color="success" glass to="/doctor/queue" />
+          <StatsCard title="Appointments" value={today.length} icon={Calendar} color="primary" glass to="/doctor/appointments" />
           <StatsCard 
             title="Today's Earnings" 
             value={`₹${todayEarnings.total || 0}`} 
@@ -67,6 +67,7 @@ export default function DoctorDashboard() {
             icon={DollarSign} 
             color="success" 
             glass
+            to="/doctor/earnings"
           />
           <StatsCard title="Avg. Consult" value={`${doctor?.consultation_avg_time || 0}m`} icon={TrendingUp} color="neutral" glass />
         </div>

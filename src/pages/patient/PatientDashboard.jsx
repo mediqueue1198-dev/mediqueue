@@ -55,6 +55,7 @@ export default function PatientDashboard() {
             icon={Calendar}
             color="primary"
             glass
+            to="/patient/appointments"
           />
           <StatsCard
             title="Today"
@@ -63,6 +64,7 @@ export default function PatientDashboard() {
             icon={Clock}
             color="success"
             glass
+            to="/patient/appointments"
           />
           <StatsCard
             title="Queue Position"
@@ -71,6 +73,7 @@ export default function PatientDashboard() {
             icon={Activity}
             color={myEntry ? 'warning' : 'neutral'}
             glass
+            to="/patient/queue"
           />
           <StatsCard
             title="Notifications"

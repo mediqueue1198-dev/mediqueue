@@ -54,9 +54,9 @@ export default function GoogleCallback() {
           throw profileError
         }
         
-        // If there's a pending role and the user was just created (default role),
-        // update to the selected role
-        if (pendingRole && dbProfile?.role === 'patient' && !dbProfile?.full_name?.includes(' ')) {
+        // If there's a pending role and it differs from the current profile role,
+        // update to the selected role (this happens for newly created Google users)
+        if (pendingRole && pendingRole !== dbProfile?.role) {
           // Update profile with selected role
           await supabase
             .from('users')

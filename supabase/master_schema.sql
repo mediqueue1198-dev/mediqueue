@@ -861,3 +861,156 @@ $$;
 
 GRANT EXECUTE ON FUNCTION check_in_from_appointment TO authenticated;
 GRANT EXECUTE ON FUNCTION check_in_from_appointment TO anon;
+
+-- ============================================================
+-- Production Enhancement Migration (Applied: 2026-04-14)
+-- All changes are additive — no breaking changes
+-- ============================================================
+
+-- ─── 1. NO-SHOW BEHAVIORAL TRACKING ──────────────────────────────────────────
+-- Queue scoring engine reads no_show_rate to deprioritise repeat no-shows.
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS no_show_count  INTEGER      DEFAULT 0;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS total_visits   INTEGER      DEFAULT 0;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS no_show_rate   DECIMAL(4,3) DEFAULT 0.0;
+
+-- ─── 2. DOCTOR BREAK MODE COLUMNS ────────────────────────────────────────────
+-- Allows a doctor to pause their queue without cancelling patients.
+ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS is_on_break   BOOLEAN     DEFAULT FALSE;
+ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS break_until   TIMESTAMPTZ;
+ALTER TABLE public.doctors ADD COLUMN IF NOT EXISTS break_message TEXT;
+
+-- ─── 3. SKIPPED_AT COLUMN ON QUEUE_ENTRIES ───────────────────────────────────
+-- Records exact skip time for the 10-minute auto re-queue grace period.
+ALTER TABLE public.queue_entries ADD COLUMN IF NOT EXISTS skipped_at TIMESTAMPTZ;
+
+-- ─── 4. HANDLE_PATIENT_NO_SHOW RPC ───────────────────────────────────────────
+-- Marks entry as no_show AND atomically updates patient's no_show_rate.
+CREATE OR REPLACE FUNCTION public.handle_patient_no_show(p_entry_id UUID)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+  v_patient_id UUID;
+BEGIN
+  SELECT patient_id INTO v_patient_id FROM public.queue_entries WHERE id = p_entry_id;
+
+  UPDATE public.queue_entries
+  SET status = 'no_show', arrival_status = 'no_show', completed_at = NOW()
+  WHERE id = p_entry_id;
+
+  UPDATE public.users
+  SET
+    no_show_count = no_show_count + 1,
+    total_visits  = total_visits  + 1,
+    no_show_rate  = ROUND((no_show_count + 1)::DECIMAL / GREATEST(total_visits + 1, 1), 3)
+  WHERE id = v_patient_id;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.handle_patient_no_show(UUID) TO authenticated;
+
+-- ─── 5. ATOMIC DB-SIDE TOKEN GENERATION ──────────────────────────────────────
+-- Eliminates the client-side race condition (two concurrent users getting same token).
+CREATE OR REPLACE FUNCTION public.generate_queue_token(p_doctor_id UUID, p_queue_type TEXT)
+RETURNS TEXT LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+  v_prefix TEXT;
+  v_count  INTEGER;
+BEGIN
+  v_prefix := CASE p_queue_type
+    WHEN 'emergency'   THEN 'E'
+    WHEN 'walk_in'     THEN 'W'
+    WHEN 'appointment' THEN 'A'
+    ELSE                    'W'
+  END;
+
+  SELECT COUNT(*) + 1 INTO v_count
+  FROM public.queue_entries
+  WHERE doctor_id = p_doctor_id
+    AND token_number LIKE v_prefix || '%'
+    AND created_at::date = CURRENT_DATE;
+
+  RETURN v_prefix || LPAD(v_count::TEXT, 2, '0');
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.generate_queue_token(UUID, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.generate_queue_token(UUID, TEXT) TO anon;
+
+-- ─── 6. AUTO-CLEAR EXPIRED BREAKS ────────────────────────────────────────────
+-- Call on doctor login or via pg_cron. Frontend also handles client-side.
+CREATE OR REPLACE FUNCTION public.clear_expired_breaks()
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  UPDATE public.doctors
+  SET is_on_break = FALSE, break_until = NULL, break_message = NULL
+  WHERE is_on_break = TRUE AND break_until IS NOT NULL AND break_until < NOW();
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.clear_expired_breaks() TO authenticated;
+
+-- ─── 7. REGISTER_WALK_IN_PATIENT: atomic token generation ────────────────────
+-- Replaces the old version — uses generate_queue_token() inside the transaction.
+CREATE OR REPLACE FUNCTION public.register_walk_in_patient(
+  p_full_name    TEXT,
+  p_phone        TEXT,
+  p_doctor_id    UUID,
+  p_symptoms     TEXT    DEFAULT '',
+  p_is_emergency BOOLEAN DEFAULT FALSE,
+  p_token        TEXT    DEFAULT NULL
+)
+RETURNS UUID LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+  v_user_id        UUID;
+  v_entry_id       UUID;
+  v_token          TEXT;
+  v_queue_type     TEXT;
+  v_priority_score INTEGER;
+  v_guest_email    TEXT;
+BEGIN
+  v_guest_email := 'walkin_' || floor(extract(epoch from now()))::TEXT || '@mediqueue.local';
+
+  SELECT id INTO v_user_id FROM public.users
+  WHERE phone = p_phone AND role = 'patient' LIMIT 1;
+
+  IF v_user_id IS NULL THEN
+    INSERT INTO public.users (full_name, phone, email, role)
+    VALUES (p_full_name, p_phone, v_guest_email, 'patient')
+    RETURNING id INTO v_user_id;
+    INSERT INTO public.patients (user_id) VALUES (v_user_id);
+  END IF;
+
+  v_queue_type     := CASE WHEN p_is_emergency THEN 'emergency' ELSE 'walk_in' END;
+  v_priority_score := CASE WHEN p_is_emergency THEN 650 ELSE 300 END;
+  v_token          := COALESCE(p_token, public.generate_queue_token(p_doctor_id, v_queue_type));
+
+  INSERT INTO public.queue_entries (
+    doctor_id, patient_id, queue_type, token_number, priority_score,
+    predicted_consultation_time, status, check_in_status, check_in_time, arrival_status
+  )
+  VALUES (
+    p_doctor_id, v_user_id, v_queue_type, v_token, v_priority_score,
+    15, 'waiting', TRUE, NOW(), 'arrived'
+  )
+  RETURNING id INTO v_entry_id;
+
+  RETURN v_entry_id;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.register_walk_in_patient(TEXT, TEXT, UUID, TEXT, BOOLEAN, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.register_walk_in_patient(TEXT, TEXT, UUID, TEXT, BOOLEAN, TEXT) TO anon;
+
+-- ─── 8. PERFORMANCE INDEXES ───────────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_queue_skipped_entries
+  ON public.queue_entries(doctor_id, status, skipped_at)
+  WHERE status = 'skipped';
+
+CREATE INDEX IF NOT EXISTS idx_users_no_show_rate
+  ON public.users(no_show_rate)
+  WHERE no_show_rate > 0;
+
+-- ============================================================
+-- END OF SCHEMA
+-- This file is the single source of truth for the MediQueue DB.
+-- Last updated: 2026-04-14
+-- ============================================================

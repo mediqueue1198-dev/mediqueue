@@ -68,8 +68,8 @@ export const useAuthStore = create(
         }
       },
 
-ensureProfile: async (user, metadata = {}) => {
-         const { supabase } = await import('@/lib/supabase')
+  ensureProfile: async (user, metadata = {}) => {
+         // Bug 8 fix: use the top-level static import instead of dynamic import
          
          // 1. Check if profile exists
          const { data: existingProfile } = await supabase
@@ -153,7 +153,7 @@ ensureProfile: async (user, metadata = {}) => {
       register: async ({ full_name, email, phone, password, role }) => {
         set({ isLoading: true, error: null })
         try {
-          const { supabase } = await import('@/lib/supabase')
+          // Bug 8 fix: use the top-level static import
           const { data, error } = await supabase.auth.signUp({
             email,
             password,
@@ -176,7 +176,7 @@ ensureProfile: async (user, metadata = {}) => {
 
       logout: async () => {
         try {
-          const { supabase } = await import('@/lib/supabase')
+          // Bug 8 fix: use the top-level static import
           await supabase.auth.signOut()
         } finally {
           set({ user: null, profile: null, error: null })
@@ -186,7 +186,7 @@ ensureProfile: async (user, metadata = {}) => {
       updateProfile: async (updates) => {
         set({ isLoading: true, error: null })
         try {
-          const { supabase } = await import('@/lib/supabase')
+          // Bug 8 fix: use the top-level static import
           const { error } = await supabase
             .from('users')
             .update(updates)

@@ -64,10 +64,10 @@ export default function MediatorDashboard() {
         {/* Stats */}
         {stats && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatsCard title="Total Patients Today" value={stats.total_patients_today} icon={Users} color="primary" trend={8} trendLabel="vs yesterday" />
-            <StatsCard title="Active Queue" value={stats.active_queues} subtitle="waiting patients" icon={Clock} color="warning" />
-            <StatsCard title="Completed Today" value={stats.completed_consultations} icon={CheckCircle} color="success" />
-            <StatsCard title="Avg Wait Time" value={`${stats.avg_wait_time}m`} icon={TrendingUp} color={stats.avg_wait_time > 30 ? 'danger' : 'neutral'} />
+            <StatsCard title="Total Patients Today" value={stats.total_patients_today} icon={Users} color="primary" trend={8} trendLabel="vs yesterday" to="/mediator/reports" />
+            <StatsCard title="Active Queue" value={stats.active_queues} subtitle="waiting patients" icon={Clock} color="warning" to="/mediator/queue" />
+            <StatsCard title="Completed Today" value={stats.completed_consultations} icon={CheckCircle} color="success" to="/mediator/reports" />
+            <StatsCard title="Avg Wait Time" value={`${stats.avg_wait_time}m`} icon={TrendingUp} color={stats.avg_wait_time > 30 ? 'danger' : 'neutral'} to="/mediator/reports" />
           </div>
         )}
 

@@ -110,19 +110,13 @@ export const queueService = {
     return this.getQueue()
   },
 
-  subscribeToQueue(doctorId, callback) {
-    const filter = doctorId ? `doctor_id=eq.${doctorId}` : undefined
-    const channel = supabase
-      .channel(`queue-${doctorId || 'all'}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'queue_entries',
-        filter,
-      }, callback)
-      .subscribe()
-    return { unsubscribe: () => supabase.removeChannel(channel) }
-  },
+  // Bug 1 fix: subscribeToQueue() has been removed.
+  // All realtime queue_entries updates are already handled by useRealtime.js
+  // via the 'queue-global-v2' channel. Having a second subscription here
+  // caused duplicate handleRealtimeUpdate() calls leading to queue flickering,
+  // ghost entries, and incorrect position ordering.
+  // Any component that previously called queueService.subscribeToQueue()
+  // should rely on the global useRealtime hook instead.
 }
 
 export default queueService

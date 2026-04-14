@@ -3,8 +3,9 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 
 // Auth
-  const Login = lazy(() => import('@/pages/auth/Login'))
-  const Register = lazy(() => import('@/pages/auth/Register'))
+  const Splash = lazy(() => import('@/pages/auth/Splash'))
+  const RoleSelect = lazy(() => import('@/pages/auth/RoleSelect'))
+  const AuthPage = lazy(() => import('@/pages/auth/AuthPage'))
   const ForgotPassword = lazy(() => import('@/pages/auth/ForgotPassword'))
   const GoogleCallback = lazy(() => import('@/pages/auth/GoogleCallback'))
   const CompleteProfile = lazy(() => import('@/pages/auth/CompleteProfile'))
@@ -63,7 +64,7 @@ function RootRedirect() {
     return <Navigate to={getRoleRedirect(role)} replace />
   }
   
-  return <Navigate to="/login" replace />
+  return <Splash />
 }
 
 // ─── ERROR BOUNDARY ──────────────────────────────────────────────────────────
@@ -126,13 +127,14 @@ export default function App() {
         <Routes>
 {/* Root */}
             <Route path="/" element={<RootRedirect />} />
+            <Route path="/role-select" element={<RoleSelect />} />
+            <Route path="/auth" element={<AuthPage />} />
 
-            {/* Auth */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
+            {/* Auth backwards compatibility */}
+            <Route path="/login" element={<Navigate to="/auth?mode=login" replace />} />
+            <Route path="/register" element={<Navigate to="/auth?mode=register" replace />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/auth/callback/google" element={<GoogleCallback />} />
-            <Route path="/complete-profile" element={<CompleteProfile />} />
             <Route path="/complete-profile" element={<CompleteProfile />} />
 
             {/* Public display board */}

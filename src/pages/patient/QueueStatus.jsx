@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Clock, Activity, CheckCircle, AlertCircle, Phone, User, Calendar, Footprints, Siren, ArrowRight, TrendingUp, Gauge } from 'lucide-react'
+import { Clock, Activity, CheckCircle, AlertCircle, Phone, User, Calendar, Footprints, Siren, ArrowRight, TrendingUp, Gauge, Coffee } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { Card, CardHeader, CardTitle, CardBody } from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
@@ -24,6 +24,53 @@ import { getCurrentPatient, sortQueue } from '@/utils/queueEngine'
 import { Link } from 'react-router-dom'
 import notificationService from '@/services/notificationService'
 
+// ─── DOCTOR BREAK COUNTDOWN ──────────────────────────────────────────────────
+function useBreakCountdown(breakUntil) {
+  const [remaining, setRemaining] = useState(0)
+
+  useEffect(() => {
+    if (!breakUntil) { setRemaining(0); return }
+    const tick = () => {
+      const diff = Math.max(0, Math.floor((new Date(breakUntil) - new Date()) / 1000))
+      setRemaining(diff)
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [breakUntil])
+
+  const h = Math.floor(remaining / 3600)
+  const m = Math.floor((remaining % 3600) / 60)
+  const resumeTime = breakUntil ? new Date(breakUntil).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : ''
+  return { remaining, resumeTime, label: h > 0 ? `${h}h ${m}m` : `${m} min` }
+}
+
+// ─── DOCTOR BREAK BANNER ─────────────────────────────────────────────────────
+function DoctorBreakBanner({ breakUntil, breakMessage }) {
+  const { remaining, resumeTime, label } = useBreakCountdown(breakUntil)
+  return (
+    <Card className="border-2 border-amber-300 bg-amber-50">
+      <CardBody className="p-4 flex items-start gap-4">
+        <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
+          <Coffee className="w-5 h-5 text-amber-600" />
+        </div>
+        <div className="flex-1">
+          <p className="font-semibold text-amber-900 text-sm">Doctor is on a short break</p>
+          <p className="text-xs text-amber-700 mt-0.5">
+            {breakMessage || 'The doctor stepped away briefly.'}
+          </p>
+          {resumeTime && (
+            <p className="text-xs font-semibold text-amber-800 mt-1">
+              Estimated resume: {resumeTime}
+              {remaining > 0 && <span className="font-normal text-amber-600 ml-1">(~{label} remaining)</span>}
+            </p>
+          )}
+        </div>
+      </CardBody>
+    </Card>
+  )
+}
+
 export default function QueueStatus() {
   const { user } = useAuth()
   const { 
@@ -40,11 +87,12 @@ export default function QueueStatus() {
   } = useQueue()
   const [expectedTime, setExpectedTime] = useState(null)
   const [capacityWarning, setCapacityWarning] = useState(false)
+  const [doctorBreak, setDoctorBreak] = useState({ isOnBreak: false, breakUntil: null, breakMessage: null })
 
   useEffect(() => {
     const loadData = async () => {
       if (!myEntry?.doctor_id) return
-       
+
       // Check capacity
       try {
         const capacity = await notificationService.checkDoctorCapacity(myEntry.doctor_id)
@@ -52,10 +100,33 @@ export default function QueueStatus() {
       } catch (err) {
         console.error('Failed to check capacity:', err)
       }
+
+      // Fetch doctor break state
+      try {
+        const { supabase } = await import('@/lib/supabase')
+        const { data } = await supabase
+          .from('doctors')
+          .select('is_on_break, break_until, break_message')
+          .eq('id', myEntry.doctor_id)
+          .single()
+        if (data) {
+          const breakExpired = data.break_until && new Date(data.break_until) < new Date()
+          setDoctorBreak({
+            isOnBreak: data.is_on_break && !breakExpired,
+            breakUntil: data.break_until,
+            breakMessage: data.break_message,
+          })
+        }
+      } catch (err) {
+        console.error('Failed to fetch doctor break state:', err)
+      }
     }
-     
+
     if (myEntry?.doctor_id) {
       loadData()
+      // Refresh break state every 30s without blocking
+      const id = setInterval(loadData, 30_000)
+      return () => clearInterval(id)
     }
   }, [myEntry?.doctor_id])
 
@@ -188,7 +259,15 @@ export default function QueueStatus() {
               </div>
             </div>
 
-            {/* Capacity Warning */}
+            {/* Doctor Break Banner — shown before any other warnings */}
+            {doctorBreak.isOnBreak && (
+              <DoctorBreakBanner
+                breakUntil={doctorBreak.breakUntil}
+                breakMessage={doctorBreak.breakMessage}
+              />
+            )}
+
+          {/* Capacity Warning */}
             {capacityWarning && (
               <Card className="border-2 border-warning-300 bg-warning-50">
                 <CardBody className="p-4 flex items-center gap-4">

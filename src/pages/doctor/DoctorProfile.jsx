@@ -433,40 +433,21 @@ export default function DoctorProfile() {
                             </div>
                             
                             {data.active ? (
-                              <div className="flex-1 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-6">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs text-surface-500 font-medium w-12 hidden sm:block">Hours</span>
-                                  <Input 
-                                    type="time" 
-                                    value={data.start} 
-                                    onChange={(e) => handleScheduleChange(loc.id, day, 'start', e.target.value)}
-                                    className="!py-1.5 w-[110px]"
-                                  />
-                                  <span className="text-surface-400 text-xs">to</span>
-                                  <Input 
-                                    type="time" 
-                                    value={data.end} 
-                                    onChange={(e) => handleScheduleChange(loc.id, day, 'end', e.target.value)}
-                                    className="!py-1.5 w-[110px]"
-                                  />
-                                </div>
-
-                                <div className="flex items-center gap-2 bg-surface-100/50 p-2 rounded-lg border border-surface-100">
-                                  <span className="text-xs text-surface-500 font-medium">Break</span>
-                                  <Input 
-                                    type="time" 
-                                    value={data.break_start || ''} 
-                                    onChange={(e) => handleScheduleChange(loc.id, day, 'break_start', e.target.value)}
-                                    className="!py-1.5 w-[100px]"
-                                  />
-                                  <span className="text-surface-400 text-xs">-</span>
-                                  <Input 
-                                    type="time" 
-                                    value={data.break_end || ''} 
-                                    onChange={(e) => handleScheduleChange(loc.id, day, 'break_end', e.target.value)}
-                                    className="!py-1.5 w-[100px]"
-                                  />
-                                </div>
+                              <div className="flex-1 flex items-center gap-3">
+                                <span className="text-xs text-surface-500 font-medium hidden sm:block">Hours</span>
+                                <input 
+                                  type="time" 
+                                  value={data.start} 
+                                  onChange={(e) => handleScheduleChange(loc.id, day, 'start', e.target.value)}
+                                  className="flex-1 px-3 py-1.5 rounded-lg border border-surface-200 bg-white text-surface-800 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all"
+                                />
+                                <span className="text-surface-400 text-xs">to</span>
+                                <input 
+                                  type="time" 
+                                  value={data.end} 
+                                  onChange={(e) => handleScheduleChange(loc.id, day, 'end', e.target.value)}
+                                  className="flex-1 px-3 py-1.5 rounded-lg border border-surface-200 bg-white text-surface-800 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all"
+                                />
                               </div>
                             ) : (
                               <div className="flex-1 text-sm text-surface-400 italic">Off Duty</div>

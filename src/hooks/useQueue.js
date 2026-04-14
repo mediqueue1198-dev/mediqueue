@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState, useMemo } from 'react'
+import { useEffect, useCallback, useState, useMemo, useRef } from 'react'
 import { useQueueStore } from '@/store/queueStore'
 import { useAuth } from './useAuth'
 import { getPatientPosition, getNextPatients, getCurrentPatient, getWaitingCount, sortQueue } from '@/utils/queueEngine'
@@ -21,23 +21,41 @@ export function useQueue(doctorId = null) {
     updateStatus, 
     checkIn, 
     addWalkIn, 
-    recalculate 
+    recalculate,
+    // Break mode
+    isOnBreak,
+    breakUntil,
+    breakMessage,
+    toggleBreak,
+    resumeFromBreak,
+    // Skipped re-queue
+    manualReQueue,
+    processSkippedPatients,
   } = useQueueStore()
   const { user, isDoctor, profile } = useAuth()
+
+  // Stable refs to avoid stale-closure issues in effects
+  const loadQueueRef = useRef(loadQueue)
+  const recalculateRef = useRef(recalculate)
+  useEffect(() => { loadQueueRef.current = loadQueue }, [loadQueue])
+  useEffect(() => { recalculateRef.current = recalculate }, [recalculate])
   
   const [myEstimatedWait, setMyEstimatedWait] = useState(0)
   const [doctorAvgTime, setDoctorAvgTime] = useState(15)
   const [historicalDataPoints, setHistoricalDataPoints] = useState(0)
 
-  // Load queue and set up interval
+  // Load queue on mount / doctorId change only.
+  // Bug 10 fix: loadQueue & recalculate intentionally excluded from deps —
+  // they are Zustand actions whose references change on every store update,
+  // which would cause an infinite request loop if included.
   useEffect(() => {
-    loadQueue(doctorId)
-    // Recalculate scores every 2 minutes
+    loadQueueRef.current(doctorId)
     const interval = setInterval(() => {
-      recalculate()
+      recalculateRef.current()
     }, 120_000)
     return () => clearInterval(interval)
-  }, [doctorId, loadQueue, recalculate])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doctorId])
 
   // Filter entries by doctor
   const filteredEntries = useMemo(() => {
@@ -48,6 +66,10 @@ export function useQueue(doctorId = null) {
 
   const waitingEntries = useMemo(() => 
     filteredEntries.filter(e => e.status === 'waiting'), 
+  [filteredEntries])
+
+  const skippedEntries = useMemo(() =>
+    filteredEntries.filter(e => e.status === 'skipped'),
   [filteredEntries])
 
   const currentPatient = useMemo(() => 
@@ -62,14 +84,20 @@ export function useQueue(doctorId = null) {
     getWaitingCount(filteredEntries), 
   [filteredEntries])
 
-  // Get patient's queue entry and position
-  const myEntry = useMemo(() => 
-    user ? filteredEntries.find(e => e.patient_id === user.id) : null, 
-  [user, filteredEntries])
+  // Get patient's queue entry and position.
+  // Bug 5 fix: queue_entries.patient_id stores the patients table UUID (profile.patient_id),
+  // NOT the Supabase auth UID (user.id). Using user.id here always returned null.
+  const myEntry = useMemo(() => {
+    if (!user) return null
+    const patientId = profile?.patient_id || user.id
+    return filteredEntries.find(e => e.patient_id === patientId)
+  }, [user, profile, filteredEntries])
 
-  const myPosition = useMemo(() => 
-    myEntry ? getPatientPosition(filteredEntries, user?.id) : 0, 
-  [myEntry, filteredEntries, user])
+  const myPosition = useMemo(() => {
+    if (!myEntry) return 0
+    const patientId = profile?.patient_id || user?.id
+    return getPatientPosition(filteredEntries, patientId)
+  }, [myEntry, filteredEntries, user, profile])
 
   // Fetch doctor average consultation time
   useEffect(() => {
@@ -156,6 +184,7 @@ export function useQueue(doctorId = null) {
   return {
     entries: filteredEntries,
     waitingEntries,
+    skippedEntries,
     currentPatient,
     nextPatients,
     waitingCount,
@@ -170,6 +199,15 @@ export function useQueue(doctorId = null) {
     waitBreakdown,
     queueProgress,
     doctorAvgTime,
+    // Break mode
+    isOnBreak,
+    breakUntil,
+    breakMessage,
+    toggleBreak,
+    resumeFromBreak,
+    // Skipped re-queue
+    manualReQueue,
+    processSkippedPatients,
     // Actions
     callNextPatient,
     handleStatusChange,

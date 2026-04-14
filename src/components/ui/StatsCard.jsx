@@ -1,7 +1,8 @@
 import { Card } from '@/components/ui/Card'
 import { cn } from '@/utils/helpers'
+import { Link } from 'react-router-dom'
 
-export function StatsCard({ title, value, subtitle, icon: Icon, trend, trendLabel, color = 'primary', className, glass = false }) {
+export function StatsCard({ title, value, subtitle, icon: Icon, trend, trendLabel, color = 'primary', className, glass = false, to, onClick }) {
   const colorMap = {
     primary: {
       bg: 'bg-primary-50',
@@ -37,11 +38,12 @@ export function StatsCard({ title, value, subtitle, icon: Icon, trend, trendLabe
 
   const c = colorMap[color] || colorMap.primary
 
-  return (
+  const content = (
     <Card 
       glass={glass} 
-      hover 
-      className={cn('p-5 border-none shadow-soft transition-all duration-300', className)}
+      hover={glass || !!to || !!onClick} 
+      className={cn('h-full p-5 border-none shadow-soft transition-all duration-300', className)}
+      onClick={onClick}
     >
       <div className="flex items-start justify-between">
         <div className="flex-1">
@@ -65,6 +67,11 @@ export function StatsCard({ title, value, subtitle, icon: Icon, trend, trendLabe
       </div>
     </Card>
   )
+
+  if (to) {
+    return <Link to={to} className="block w-full h-full">{content}</Link>
+  }
+  return content
 }
 
 export default StatsCard
