@@ -30,7 +30,7 @@ export default function ReportsAnalytics() {
       <div className="max-w-6xl mx-auto space-y-6">
         {/* KPIs */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatsCard title="Avg Wait Time" value={`${stats.avg_wait_time}m`} icon={Clock} color="warning" />
+          <StatsCard title="Avg Wait Time" value={`${stats.avg_wait_time ?? 0}m`} icon={Clock} color="warning" />
           <StatsCard title="Daily Patients" value={stats.total_patients_today} icon={Users} color="primary" />
           <StatsCard title="Consultations" value={stats.completed_consultations} icon={TrendingUp} color="success" />
           <StatsCard title="Active Doctors" value={stats.active_doctors} icon={Star} color="success" />

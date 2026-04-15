@@ -66,14 +66,36 @@ export const useNotificationStore = create((set, get) => ({
   markAsRead: async (notificationId) => {
     try {
       await notificationService.markAsRead(notificationId)
-      set((state) => ({
-        notifications: state.notifications.map((n) =>
-          n.id === notificationId ? { ...n, is_read: true } : n
-        ),
-        unreadCount: Math.max(0, state.unreadCount - 1),
-      }))
+      set((state) => {
+        const notification = state.notifications.find(n => n.id === notificationId)
+        if (!notification) return state // Already removed
+        
+        return {
+          notifications: state.notifications.map((n) =>
+            n.id === notificationId ? { ...n, is_read: true } : n
+          ),
+          unreadCount: Math.max(0, state.unreadCount - 1),
+        }
+      })
     } catch (error) {
       console.error('Failed to mark notification as read:', error)
+    }
+  },
+
+  deleteNotification: async (notificationId) => {
+    try {
+      await notificationService.deleteNotification(notificationId)
+      set((state) => {
+        const notification = state.notifications.find(n => n.id === notificationId)
+        return {
+          notifications: state.notifications.filter((n) => n.id !== notificationId),
+          unreadCount: notification && !notification.is_read 
+            ? Math.max(0, state.unreadCount - 1)
+            : state.unreadCount,
+        }
+      })
+    } catch (error) {
+      console.error('Failed to delete notification:', error)
     }
   },
 
@@ -91,10 +113,16 @@ export const useNotificationStore = create((set, get) => ({
   },
 
   addNotification: (notification) => {
-    set((state) => ({
-      notifications: [notification, ...state.notifications],
-      unreadCount: state.unreadCount + (notification.is_read ? 0 : 1),
-    }))
+    set((state) => {
+      // Prevent duplicates
+      const exists = state.notifications.some(n => n.id === notification.id)
+      if (exists) return state
+      
+      return {
+        notifications: [notification, ...state.notifications],
+        unreadCount: state.unreadCount + (notification.is_read ? 0 : 1),
+      }
+    })
   },
 
   removeNotification: (notificationId) => {

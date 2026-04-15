@@ -4,19 +4,19 @@ import { useAuth } from '@/hooks/useAuth'
 import { completeProfileSchema } from '@/utils/validators'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Eye, EyeOff, User, Mail, Phone, Tag } from 'lucide-react'
+import { Eye, EyeOff, User, Mail, Phone, Lock, Tag } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import RoleButtons from '@/components/ui/RoleButtons'
 import toast from 'react-hot-toast'
 
 export default function CompleteProfile() {
-const { profile, updateProfile, isAuthenticated, user } = useAuth()
-   const navigate = useNavigate()
-   const location = useLocation()
-   
-   const [selectedRole, setSelectedRole] = useState(null)
-   const [loading, setLoading] = useState(false)
+  const { profile, updateProfile, user } = useAuth()
+  const navigate = useNavigate()
+  
+  const [selectedRole, setSelectedRole] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
 
    const { register, handleSubmit, formState: { errors } } = useForm({
      resolver: zodResolver(completeProfileSchema),

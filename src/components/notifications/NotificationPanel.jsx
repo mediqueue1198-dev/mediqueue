@@ -111,6 +111,7 @@ export default function NotificationPanel() {
     loadNotifications,
     markAsRead,
     markAllRead,
+    deleteNotification,
     removeNotification,
     subscribeToNotifications,
     unsubscribeFromNotifications,
@@ -146,7 +147,9 @@ export default function NotificationPanel() {
   }, [isDropdownOpen, setDropdownOpen])
 
   const handleNotificationClick = (notification) => {
-    console.log('Notification clicked:', notification)
+    if (!notification.is_read) {
+      markAsRead(notification.id)
+    }
     setDropdownOpen(false)
   }
 
@@ -209,7 +212,7 @@ export default function NotificationPanel() {
                         key={notification.id}
                         notification={notification}
                         onMarkRead={markAsRead}
-                        onDelete={removeNotification}
+                        onDelete={deleteNotification}
                         onClick={handleNotificationClick}
                       />
                     ))}
@@ -224,7 +227,7 @@ export default function NotificationPanel() {
                         key={notification.id}
                         notification={notification}
                         onMarkRead={markAsRead}
-                        onDelete={removeNotification}
+                        onDelete={deleteNotification}
                         onClick={handleNotificationClick}
                       />
                     ))}

@@ -196,7 +196,8 @@ export default function DoctorQueue() {
   const { user } = useAuth()
   const { doctor, isLoading: isDoctorLoading } = useDoctorProfile(user?.id)
   const {
-    entries,
+    allEntries,
+    filteredEntries,
     currentPatient,
     nextPatients,
     waitingCount,
@@ -217,8 +218,8 @@ export default function DoctorQueue() {
   const timerRef = useRef(null)
 
   // ─── Derived lists ──────────────────────────────────────────────────────
-  const activeEntries = entries.filter(e => ['waiting', 'in_consultation'].includes(e.status))
-  const skippedEntries = entries.filter(e => e.status === 'skipped')
+  const activeEntries = (allEntries || []).filter(e => ['waiting', 'in_consultation'].includes(e.status))
+  const skippedEntries = (allEntries || []).filter(e => e.status === 'skipped')
 
   // ─── Handlers ──────────────────────────────────────────────────────────
   const handleNoShow = async (entry) => {
@@ -236,7 +237,7 @@ export default function DoctorQueue() {
     try {
       const next = await callNextPatient()
       if (next) {
-        toast.success(`Calling ${next.patient?.full_name || next.token_number}`)
+        toast.success(`Calling ${next.patient_name || next.patient?.full_name || next.token_number}`)
         setCalledPatient(next)
         setCountdown(NO_SHOW_TIMEOUT_SECONDS)
       } else {
@@ -301,7 +302,7 @@ export default function DoctorQueue() {
 
   // ─── Sync calledPatient from entries ────────────────────────────────────
   useEffect(() => {
-    const inConsultation = entries.find(e => e.status === 'in_consultation')
+    const inConsultation = (allEntries || []).find(e => e.status === 'in_consultation')
     if (inConsultation?.called_at) {
       setCalledPatient(inConsultation)
       const elapsed = Math.floor((Date.now() - new Date(inConsultation.called_at).getTime()) / 1000)
@@ -310,7 +311,7 @@ export default function DoctorQueue() {
       setCalledPatient(null)
       setCountdown(NO_SHOW_TIMEOUT_SECONDS)
     }
-  }, [entries])
+  }, [allEntries])
 
   const formatCountdown = (secs) => {
     const m = Math.floor(secs / 60)
@@ -377,7 +378,7 @@ export default function DoctorQueue() {
             <p className="text-sm text-surface-500">
               {waitingCount} in queue
               &nbsp;•&nbsp;
-              {entries.filter(e => e.check_in_status).length} checked in
+              {(allEntries || []).filter(e => e.check_in_status).length} checked in
               {skippedEntries.length > 0 && (
                 <span className="ml-2 text-warning-600">
                   • {skippedEntries.length} skipped
@@ -449,7 +450,7 @@ export default function DoctorQueue() {
                     </div>
 
                     <Avatar
-                      name={entry.family_member?.name || entry.patient?.full_name || 'Patient'}
+                      name={entry.family_member?.name || entry.patient_name || entry.patient?.full_name || 'Patient'}
                       size="sm"
                       className="flex-shrink-0"
                     />
@@ -459,7 +460,7 @@ export default function DoctorQueue() {
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="font-semibold text-surface-800">
-                            {entry.family_member?.name || entry.patient?.full_name || 'Patient'}
+                            {entry.family_member?.name || entry.patient_name || entry.patient?.full_name || 'Patient'}
                             {entry.family_member && (
                               <span className="text-xs font-normal text-surface-500 ml-2">
                                 ({entry.family_member.relationship})
@@ -542,10 +543,10 @@ export default function DoctorQueue() {
                             </Button>
                           </>
                         )}
-                        {entry.patient?.phone && (
+                        {(entry.patient_phone || entry.patient?.phone) && (
                           <Button variant="ghost" size="sm" className="text-primary-600">
                             <Phone className="w-3.5 h-3.5" />
-                            {entry.patient.phone}
+                            {entry.patient_phone || entry.patient?.phone}
                           </Button>
                         )}
                       </div>
@@ -595,12 +596,12 @@ export default function DoctorQueue() {
                     return (
                       <div key={entry.id} className="flex items-center gap-3 px-4 py-3">
                         <Avatar
-                          name={entry.family_member?.name || entry.patient?.full_name || 'Patient'}
+                          name={entry.family_member?.name || entry.patient_name || entry.patient?.full_name || 'Patient'}
                           size="xs"
                         />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-surface-700 truncate">
-                            {entry.family_member?.name || entry.patient?.full_name || 'Patient'}
+                            {entry.family_member?.name || entry.patient_name || entry.patient?.full_name || 'Patient'}
                           </p>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="text-xs text-surface-400">{entry.token_number}</span>

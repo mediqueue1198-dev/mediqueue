@@ -48,10 +48,10 @@ export function useAuth() {
     isInitialized,
     error,
     isAuthenticated: !!user,
-    role: profile?.role || user?.role || null,
-    isPatient: (profile?.role || user?.role) === 'patient',
-    isDoctor: (profile?.role || user?.role) === 'doctor',
-    isMediator: (profile?.role || user?.role) === 'mediator',
+    role: profile?.role || user?.user_metadata?.role || null,
+    isPatient: (profile?.role || user?.user_metadata?.role) === 'patient',
+    isDoctor: (profile?.role || user?.user_metadata?.role) === 'doctor',
+    isMediator: (profile?.role || user?.user_metadata?.role) === 'mediator',
     login,
     signInWithGoogle, // Add Google sign-in
     // Stubs for Phone features not yet implemented

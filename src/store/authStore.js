@@ -82,10 +82,10 @@ export const useAuthStore = create(
 
          // 2. Create profile
          // For Google OAuth, we may have user metadata from Google
-         const role = metadata.role || 'patient'
+         const role = metadata.role || user.user_metadata?.role || 'patient'
          const fullName = metadata.full_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'User'
          const email = user.email
-         const phone = user.phone || metadata.phone || null
+         const phone = user.phone || metadata.phone || user.user_metadata?.phone || null
          const avatarUrl = user.user_metadata?.avatar_url || metadata.avatar_url || null
 
          const newProfile = {

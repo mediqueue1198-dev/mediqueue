@@ -103,8 +103,11 @@ export default function ConsultationScreen() {
     try {
       await patientsService.addMedicalRecord({
         patient_id: currentPatient?.patient_id,
+        patient_name: currentPatient?.patient_name || currentPatient?.patient?.full_name,
+        patient_phone: currentPatient?.patient_phone || currentPatient?.patient?.phone,
         doctor_id: doctor?.id,
         appointment_id: currentPatient?.appointment_id,
+        queue_entry_id: currentPatient?.id,
         diagnosis: data.diagnosis,
         prescription: data.prescription.filter(p => p.name),
         notes: data.notes,
@@ -135,14 +138,14 @@ export default function ConsultationScreen() {
           <Card className="border-2 border-primary-200 bg-primary-50/30">
             <CardBody className="p-4">
               <div className="flex items-center gap-4">
-                <Avatar name={currentPatient.patient?.full_name} size="lg" />
+                <Avatar name={currentPatient.patient_name || currentPatient.patient?.full_name} size="lg" />
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-surface-800 text-lg">{currentPatient.patient?.full_name}</h3>
+                    <h3 className="font-bold text-surface-800 text-lg">{currentPatient.patient_name || currentPatient.patient?.full_name}</h3>
                     <Badge variant="primary" dot pulse>In Consultation</Badge>
                   </div>
                   <p className="text-sm text-surface-500 mt-0.5">
-                    Token: {currentPatient.token_number} • {currentPatient.patient?.phone}
+                    Token: {currentPatient.token_number} • {currentPatient.patient_phone || currentPatient.patient?.phone}
                   </p>
                   <p className="text-xs text-surface-400 mt-1">
                     Type: {currentPatient.queue_type?.replace('_', ' ')}

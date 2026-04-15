@@ -314,7 +314,7 @@ export function getDetailedWaitBreakdown(myEntry, allEntries, defaultConsultTime
     
     breakdown.push({
       token: entry.token_number,
-      patientName: entry.patient?.full_name || entry.family_member?.name || 'Patient',
+      patientName: entry.patient_name || entry.patient?.full_name || entry.family_member?.name || 'Patient',
       estimatedMinutes: actualTime,
       status: entry.status,
     })

@@ -29,6 +29,7 @@ export const useQueueStore = create((set, get) => ({
     set({ isLoading: true, error: null })
     try {
       const { supabase } = await import('@/lib/supabase')
+      
       let query = supabase
         .from('queue_entries')
         .select(
@@ -66,7 +67,6 @@ export const useQueueStore = create((set, get) => ({
       switch (eventType) {
         case 'INSERT': {
           if (!entries.some(e => e.id === newRecord.id)) {
-            // Bug 3 fix: Realtime INSERT payloads lack joined relations — fetch full record.
             try {
               const { supabase } = await import('@/lib/supabase')
               const { data: fullEntry, error } = await supabase
@@ -75,7 +75,7 @@ export const useQueueStore = create((set, get) => ({
                   '*, patient:users!patient_id(full_name, phone, email, no_show_rate, no_show_count, total_visits), doctor:doctors!doctor_id(*, user:users!user_id(full_name)), family_member:family_members(name, relationship)'
                 )
                 .eq('id', newRecord.id)
-                .single()
+                .maybeSingle()
               if (!error && fullEntry) {
                 entries = [...entries, fullEntry]
               } else {
@@ -87,15 +87,15 @@ export const useQueueStore = create((set, get) => ({
           }
           break
         }
-        case 'UPDATE':
+        case 'UPDATE': {
           entries = entries.map(e =>
             e.id === newRecord.id ? { ...e, ...newRecord } : e
           )
-          // Remove from list if status is now completed/cancelled/no_show
           entries = entries.filter(e =>
             ['waiting', 'in_consultation', 'skipped'].includes(e.status)
           )
           break
+        }
         case 'DELETE':
           entries = entries.filter(e => e.id !== oldRecord.id)
           break
@@ -150,7 +150,7 @@ export const useQueueStore = create((set, get) => ({
   },
 
   // ─── NO SHOW TIMER ─────────────────────────────────────────────────────────
-  startNoShowTimer: (entryId, doctorId, calledAt) => {
+  startNoShowTimer: (entryId, doctorId, _calledAt) => {
     const state = get()
     if (state.calledPatientTimer) clearTimeout(state.calledPatientTimer)
 
@@ -178,14 +178,37 @@ export const useQueueStore = create((set, get) => ({
     const { supabase } = await import('@/lib/supabase')
     get().clearNoShowTimer()
 
-    const { error } = await supabase.rpc('handle_patient_no_show', { p_entry_id: entryId })
+    const entry = get().entries.find(e => e.id === entryId)
+    if (!entry) return
+
+    const newPriorityScore = Math.max(10, Math.floor((entry.priority_score || 100) * 0.3))
+
+    const { error } = await supabase
+      .from('queue_entries')
+      .update({
+        status: 'waiting',
+        skipped_at: null,
+        priority_score: newPriorityScore,
+        no_show_count: (entry.patient?.no_show_count || 0) + 1
+      })
+      .eq('id', entryId)
+
     if (error) {
       toast.error('Failed to process no-show: ' + error.message)
       return
     }
 
-    // Automatically call next if possible
-    await get().callNext(doctorId)
+    set(state => ({
+      entries: sortQueue(
+        state.entries.map(e =>
+          e.id === entryId
+            ? { ...e, status: 'waiting', priority_score: newPriorityScore, skipped_at: null }
+            : e
+        )
+      ),
+    }))
+
+    toast.success(`${entry.token_number} moved to end of queue. Please check in again.`)
   },
 
   // ─── UPDATE STATUS ─────────────────────────────────────────────────────────
@@ -198,6 +221,11 @@ export const useQueueStore = create((set, get) => ({
     // Track consultation start
     if (status === 'in_consultation' && !extras.consultation_started_at) {
       updates.consultation_started_at = now
+    }
+
+    // Start no-show timer when patient is called to consultation
+    if (status === 'in_consultation') {
+      get().startNoShowTimer(entryId, null, now)
     }
 
     // Track consultation end and record duration
@@ -246,6 +274,9 @@ export const useQueueStore = create((set, get) => ({
       return
     }
 
+    // Get entry for callNext after update
+    const entry = get().entries.find(e => e.id === entryId)
+
     // Bug 6 fix: merge full updates object (not just {status}) into local state
     set(state => ({
       entries: sortQueue(
@@ -253,8 +284,9 @@ export const useQueueStore = create((set, get) => ({
       ),
     }))
 
-    if (['completed', 'skipped', 'no_show'].includes(status)) {
-      get().recalculate()
+    if (['completed', 'skipped', 'no_show'].includes(status) && entry) {
+      get().clearNoShowTimer()
+      get().callNext(entry.doctor_id)
     }
   },
 
@@ -310,12 +342,12 @@ export const useQueueStore = create((set, get) => ({
 
     const { supabase } = await import('@/lib/supabase')
 
-    const { data: entryId, error: rpcError } = await supabase.rpc('check_in_from_appointment', {
+    const { data: inserted, error: rpcError } = await supabase.rpc('check_in_from_appointment', {
       p_appointment_id: appointment.id,
       p_doctor_id: appointment.doctor_id,
       p_token: token,
-      p_priority_score: priorityScore,
-      p_predicted_time: appointment.duration_minutes || 15,
+      p_priority_score: Math.round(priorityScore || 100),
+      p_predicted_time: Math.round(appointment.duration_minutes || 15),
     })
 
     if (rpcError) {
@@ -323,17 +355,9 @@ export const useQueueStore = create((set, get) => ({
       throw rpcError
     }
 
-    const { data: inserted, error: fetchError } = await supabase
-      .from('queue_entries')
-      .select(
-        '*, patient:users!patient_id(full_name, phone, email, no_show_rate, no_show_count, total_visits), doctor:doctors!doctor_id(*, user:users!user_id(full_name)), family_member:family_members(name, relationship)'
-      )
-      .eq('id', entryId)
-      .single()
-
-    if (fetchError) {
-      toast.error('Check-in failed: ' + fetchError.message)
-      throw fetchError
+    if (!inserted) {
+      toast.error('Queue entry created but could not be retrieved. Please refresh.')
+      throw new Error('Retrieved null after check-in')
     }
 
     // Send token notification
@@ -394,20 +418,7 @@ export const useQueueStore = create((set, get) => ({
     })
 
     if (!rpcError && rpcResult) {
-      const { data: inserted, error: fetchError } = await supabase
-        .from('queue_entries')
-        .select(
-          '*, patient:users!patient_id(full_name, phone, email, no_show_rate, no_show_count, total_visits), doctor:doctors!doctor_id(*, user:users!user_id(full_name)), family_member:family_members(name, relationship)'
-        )
-        .eq('id', rpcResult)
-        .single()
-
-      if (fetchError) {
-        toast.error('Queue entry created but relation fetch failed: ' + fetchError.message, {
-          duration: 6000,
-        })
-        throw fetchError
-      }
+      const inserted = rpcResult
 
       if (inserted) {
         set(state => {
@@ -471,9 +482,10 @@ export const useQueueStore = create((set, get) => ({
         .from('doctors')
         .select('is_on_break, break_until, break_message')
         .eq('id', doctorId)
-        .single()
+        .maybeSingle()
 
       if (error) throw error
+      if (!data) return;
 
       // Auto-clear break if break_until has already passed
       const breakExpired = data.break_until && new Date(data.break_until) < new Date()

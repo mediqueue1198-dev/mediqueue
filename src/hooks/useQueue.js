@@ -45,16 +45,16 @@ export function useQueue(doctorId = null) {
   const [historicalDataPoints, setHistoricalDataPoints] = useState(0)
 
   // Load queue on mount / doctorId change only.
-  // Bug 10 fix: loadQueue & recalculate intentionally excluded from deps —
-  // they are Zustand actions whose references change on every store update,
-  // which would cause an infinite request loop if included.
   useEffect(() => {
-    loadQueueRef.current(doctorId)
+    if (doctorId) {
+      loadQueueRef.current(doctorId)
+    } else {
+      loadQueueRef.current(null)
+    }
     const interval = setInterval(() => {
       recalculateRef.current()
     }, 120_000)
     return () => clearInterval(interval)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doctorId])
 
   // Filter entries by doctor
@@ -85,19 +85,15 @@ export function useQueue(doctorId = null) {
   [filteredEntries])
 
   // Get patient's queue entry and position.
-  // Bug 5 fix: queue_entries.patient_id stores the patients table UUID (profile.patient_id),
-  // NOT the Supabase auth UID (user.id). Using user.id here always returned null.
   const myEntry = useMemo(() => {
     if (!user) return null
-    const patientId = profile?.patient_id || user.id
-    return filteredEntries.find(e => e.patient_id === patientId)
-  }, [user, profile, filteredEntries])
+    return filteredEntries.find(e => e.patient_id === user.id)
+  }, [user, filteredEntries])
 
   const myPosition = useMemo(() => {
     if (!myEntry) return 0
-    const patientId = profile?.patient_id || user?.id
-    return getPatientPosition(filteredEntries, patientId)
-  }, [myEntry, filteredEntries, user, profile])
+    return getPatientPosition(filteredEntries, user.id)
+  }, [myEntry, filteredEntries, user])
 
   // Fetch doctor average consultation time
   useEffect(() => {
@@ -182,12 +178,14 @@ export function useQueue(doctorId = null) {
   }, [updateStatus, recalculate])
 
   return {
-    entries: filteredEntries,
-    waitingEntries,
-    skippedEntries,
+    entries: entries || [],          // All entries from store (for doctor queue)
+    filteredEntries: filteredEntries || [],  // Filtered by doctor (for display)
+    allEntries: entries || [],       // Explicitly all entries
+    waitingEntries: waitingEntries || [],
+    skippedEntries: skippedEntries || [],
     currentPatient,
-    nextPatients,
-    waitingCount,
+    nextPatients: nextPatients || [],
+    waitingCount: waitingCount || 0,
     isLoading,
     error,
     // Patient-specific

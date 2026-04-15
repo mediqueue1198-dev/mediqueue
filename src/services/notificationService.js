@@ -81,25 +81,38 @@ export const notificationService = {
   },
 
   async sendNotification(userId, userRole, type, message, metadata = {}) {
-    const { data, error } = await supabase
-      .from('notifications')
-      .insert({
-        user_id: userId,
-        user_role: userRole,
-        title: NOTIFICATION_MESSAGES[type]?.title || 'Notification',
-        message: message || NOTIFICATION_MESSAGES[type]?.getMessage(metadata) || '',
-        type: this._toDbType(type),
-        metadata: metadata,
-        is_read: false,
-      })
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Failed to send notification:', error)
-      throw error
+    // Guest/Walk-in patients don't have a registered user_id. 
+    // Skip in-app notification if no userId is provided.
+    if (!userId) {
+      console.log(`[NotificationService] Skipping in-app notification for guest (role: ${userRole}, type: ${type})`);
+      return null;
     }
-    return data
+
+    try {
+      const { data, error } = await supabase
+        .from('notifications')
+        .insert({
+          user_id: userId,
+          user_role: userRole,
+          title: NOTIFICATION_MESSAGES[type]?.title || 'Notification',
+          message: message || NOTIFICATION_MESSAGES[type]?.getMessage(metadata) || '',
+          type: this._toDbType(type),
+          metadata: metadata,
+          is_read: false,
+        })
+        .select()
+        .single()
+
+      if (error) {
+        // If it's an RLS error or similar, log it but don't crash the workflow
+        console.error('[NotificationService] Failed to send notification (likely RLS or constraint):', error);
+        return null;
+      }
+      return data
+    } catch (err) {
+      console.error('[NotificationService] Unexpected error sending notification:', err);
+      return null;
+    }
   },
 
   async sendToPatient(patientId, type, message, metadata = {}) {
@@ -142,6 +155,15 @@ export const notificationService = {
     const { error } = await supabase
       .from('notifications')
       .update({ is_read: true, updated_at: new Date().toISOString() })
+      .eq('id', notificationId)
+
+    if (error) throw error
+  },
+
+  async deleteNotification(notificationId) {
+    const { error } = await supabase
+      .from('notifications')
+      .delete()
       .eq('id', notificationId)
 
     if (error) throw error

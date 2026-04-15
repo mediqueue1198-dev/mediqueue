@@ -186,10 +186,10 @@ export default function DoctorAppointments() {
                       <p className="text-2xl font-bold text-primary-700 font-display leading-none">{new Date(appt.scheduled_time).getDate()}</p>
                       <p className="text-xs text-primary-500">{new Date(appt.scheduled_time).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })}</p>
                     </div>
-                    <Avatar name={appt.family_member?.name || appt.patient?.full_name || 'Patient'} size="sm" />
+                    <Avatar name={appt.family_member?.name || appt.patient_name || appt.patient?.full_name || 'Patient'} size="sm" />
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-surface-800">
-                        {appt.family_member?.name || appt.patient?.full_name}
+                        {appt.family_member?.name || appt.patient_name || appt.patient?.full_name}
                         {appt.family_member && <span className="text-xs font-normal text-surface-500 ml-2">({appt.family_member.relationship})</span>}
                       </p>
                       <p className="text-xs text-surface-500 mt-0.5 truncate">{appt.symptoms}</p>
@@ -329,7 +329,7 @@ export default function DoctorAppointments() {
       <Modal isOpen={!!rejectionAppointment} onClose={() => setRejectionAppointment(null)} title="Reject Appointment">
         <div className="space-y-4">
           <p className="text-sm text-surface-600">
-            You are rejecting the appointment for <strong>{rejectionAppointment?.patient?.full_name}</strong>. 
+            You are rejecting the appointment for <strong>{rejectionAppointment?.patient_name || rejectionAppointment?.patient?.full_name}</strong>. 
             Please provide a reason so the patient knows why.
           </p>
           <Textarea
@@ -353,7 +353,7 @@ export default function DoctorAppointments() {
           <div className="p-4 bg-surface-50 rounded-xl">
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm text-surface-600">Patient</span>
-              <span className="font-medium text-surface-800">{selectedAppointment?.patient?.full_name}</span>
+              <span className="font-medium text-surface-800">{selectedAppointment?.patient_name || selectedAppointment?.patient?.full_name}</span>
             </div>
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm text-surface-600">Consultation Fee</span>
@@ -390,7 +390,7 @@ export default function DoctorAppointments() {
       <Modal isOpen={!!rescheduleAppointment} onClose={() => setRescheduleAppointment(null)} title="Reschedule Appointment">
         <div className="space-y-4">
           <p className="text-sm text-surface-600">
-            Reschedule appointment for <strong>{rescheduleAppointment?.patient?.full_name}</strong>
+            Reschedule appointment for <strong>{rescheduleAppointment?.patient_name || rescheduleAppointment?.patient?.full_name}</strong>
           </p>
           <Input
             label="New Date"

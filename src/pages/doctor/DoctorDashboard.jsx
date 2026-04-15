@@ -87,10 +87,10 @@ export default function DoctorDashboard() {
               <CardBody>
                 {currentPatient ? (
                   <div className="text-center py-2 animate-in fade-in zoom-in duration-500">
-                    <Avatar name={currentPatient.patient?.full_name} size="xl" className="mx-auto mb-3 ring-4 ring-primary-50 ring-offset-2" />
-                    <p className="font-bold text-lg font-display text-surface-800">{currentPatient.patient?.full_name}</p>
+                    <Avatar name={currentPatient.patient_name || currentPatient.patient?.full_name} size="xl" className="mx-auto mb-3 ring-4 ring-primary-50 ring-offset-2" />
+                    <p className="font-bold text-lg font-display text-surface-800">{currentPatient.patient_name || currentPatient.patient?.full_name}</p>
                     <p className="text-sm text-surface-500 mb-2">{currentPatient.token_number}</p>
-                    <p className="text-xs text-surface-400">{currentPatient.patient?.phone}</p>
+                    <p className="text-xs text-surface-400">{currentPatient.patient_phone || currentPatient.patient?.phone}</p>
                     <div className="mt-4">
                       <Link to="/doctor/consultation">
                         <Button className="w-full shadow-lg shadow-primary-200">Open Consultation</Button>
@@ -121,9 +121,9 @@ export default function DoctorDashboard() {
                       <div className="w-7 h-7 rounded-lg bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700">
                         {idx + 1}
                       </div>
-                      <Avatar name={p.patient?.full_name} size="sm" />
+                      <Avatar name={p.patient_name || p.patient?.full_name} size="sm" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-surface-800 truncate">{p.patient?.full_name}</p>
+                        <p className="text-sm font-medium text-surface-800 truncate">{p.patient_name || p.patient?.full_name}</p>
                         <p className="text-xs text-surface-500">{p.token_number} • ~{p.predicted_consultation_time}min</p>
                       </div>
                       <Badge variant="warning" dot={p.queue_type === 'emergency'}>
@@ -155,9 +155,9 @@ export default function DoctorDashboard() {
                     <div className="text-center min-w-[48px]">
                       <p className="text-xs text-surface-500">{formatTime(appt.scheduled_time)}</p>
                     </div>
-                    <Avatar name={appt.patient?.full_name} size="sm" />
+                    <Avatar name={appt.patient_name || appt.patient?.full_name} size="sm" />
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-surface-800 text-sm">{appt.patient?.full_name}</p>
+                      <p className="font-medium text-surface-800 text-sm">{appt.patient_name || appt.patient?.full_name}</p>
                       <p className="text-xs text-surface-500 truncate">{appt.symptoms}</p>
                     </div>
                     <Badge variant={APPOINTMENT_STATUS_CONFIG[appt.status]?.color || 'neutral'} dot>

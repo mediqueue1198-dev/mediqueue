@@ -18,6 +18,7 @@ import toast from 'react-hot-toast'
 const TABS = [
   { id: 'control', label: 'Queue Control', icon: Activity },
   { id: 'registration', label: 'Walk-in Entry', icon: UserPlus },
+  { id: 'history', label: 'History', icon: ListFilter },
 ]
 
 export default function MediatorOperations() {
@@ -25,8 +26,11 @@ export default function MediatorOperations() {
   const { entries, loadQueue, updateStatus, changePriority, addWalkIn } = useQueueStore()
   const [doctorFilter, setDoctorFilter] = useState('')
   const [doctors, setDoctors] = useState([])
+  const [history, setHistory] = useState([])
   const [isLoadingDoctors, setIsLoadingDoctors] = useState(true)
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [lastToken, setLastToken] = useState(null)
+  const [searchTerm, setSearchTerm] = useState('')
 
   useEffect(() => {
     loadQueue()
@@ -37,6 +41,33 @@ export default function MediatorOperations() {
       })
     })
   }, [])
+
+  // Fetch history when history tab is active
+  useEffect(() => {
+    if (activeTab === 'history') {
+      fetchHistory()
+    }
+  }, [activeTab])
+
+  const fetchHistory = async () => {
+    setIsLoadingHistory(true)
+    try {
+      const { supabase } = await import('@/lib/supabase')
+      const { data, error } = await supabase
+        .from('medical_records')
+        .select('*, doctor:doctor_id(*, user:users!user_id(full_name))')
+        .order('created_at', { ascending: false })
+        .limit(100)
+      
+      if (error) throw error
+      setHistory(data || [])
+    } catch (err) {
+      console.error('Failed to fetch history:', err)
+      toast.error('Failed to load consultation history')
+    } finally {
+      setIsLoadingHistory(false)
+    }
+  }
 
   // Walk-in Form
   const { register, handleSubmit, reset, watch, formState: { errors } } = useForm({
@@ -184,7 +215,7 @@ export default function MediatorOperations() {
                     </div>
                     <p className="text-sm font-medium text-medical-600 mb-1">Registration Complete</p>
                     <p className="text-4xl font-bold font-display text-medical-900 mb-2">{lastToken.token_number}</p>
-                    <p className="text-sm text-medical-700 mb-6">Patient: {lastToken.patient?.full_name}</p>
+                    <p className="text-sm text-medical-700 mb-6">Patient: {lastToken.patient_name || lastToken.patient?.full_name}</p>
                     <Button variant="outline" size="sm" onClick={() => setLastToken(null)}>Dismiss</Button>
                   </CardBody>
                 </Card>
@@ -215,10 +246,10 @@ export default function MediatorOperations() {
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold font-display ${entry.status === 'in_consultation' ? 'bg-primary-100 text-primary-700' : 'bg-surface-100 text-surface-600'}`}>
                           {idx + 1}
                         </div>
-                        <Avatar name={entry.patient?.full_name} size="sm" />
+                        <Avatar name={entry.patient_name || entry.patient?.full_name} size="sm" />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-3">
-                            <span className="font-bold text-surface-900">{entry.patient?.full_name}</span>
+                            <span className="font-bold text-surface-900">{entry.patient_name || entry.patient?.full_name}</span>
                             <Badge variant="neutral">{entry.token_number}</Badge>
                             <Badge variant={entry.queue_type === 'emergency' ? 'danger' : 'primary'}>{QUEUE_TYPE_CONFIG[entry.queue_type]?.label}</Badge>
                           </div>
@@ -239,6 +270,84 @@ export default function MediatorOperations() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'history' && (
+          <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle>Consultation History</CardTitle>
+                <div className="flex gap-2">
+                   <div className="relative">
+                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
+                     <Input 
+                       placeholder="Search patient or token..." 
+                       className="pl-9 h-9 text-sm"
+                       value={searchTerm}
+                       onChange={e => setSearchTerm(e.target.value)}
+                     />
+                   </div>
+                   <Button variant="outline" size="sm" onClick={fetchHistory} icon={Activity}>Refresh</Button>
+                </div>
+              </CardHeader>
+              <CardBody className="p-0">
+                {isLoadingHistory ? (
+                  <div className="py-20 flex justify-center"><Activity className="w-8 h-8 text-primary-500 animate-spin" /></div>
+                ) : history.length === 0 ? (
+                  <EmptyState icon={ListFilter} title="No History Found" description="No consultation records available." />
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-surface-100 bg-surface-50">
+                          <th className="px-4 py-3 text-xs font-bold text-surface-500 uppercase">Patient / Guest</th>
+                          <th className="px-4 py-3 text-xs font-bold text-surface-500 uppercase">Doctor</th>
+                          <th className="px-4 py-3 text-xs font-bold text-surface-500 uppercase">Diagnosis</th>
+                          <th className="px-4 py-3 text-xs font-bold text-surface-500 uppercase">Date</th>
+                          <th className="px-4 py-3 text-xs font-bold text-surface-500 uppercase">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-surface-100">
+                        {history
+                          .filter(h => 
+                            (h.patient_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            (h.diagnosis || '').toLowerCase().includes(searchTerm.toLowerCase())
+                          )
+                          .map((rec) => (
+                          <tr key={rec.id} className="hover:bg-surface-50 transition-colors">
+                            <td className="px-4 py-4">
+                              <div className="flex items-center gap-3">
+                                <Avatar name={rec.patient_name || 'Patient'} size="xs" />
+                                <div>
+                                  <p className="text-sm font-semibold text-surface-900">{rec.patient_name || 'Patient'}</p>
+                                  <p className="text-[10px] text-surface-500 font-mono">{rec.patient_phone || 'N/A'}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-4">
+                              <p className="text-sm text-surface-700">{rec.doctor?.user?.full_name || 'Doctor'}</p>
+                            </td>
+                            <td className="px-4 py-4">
+                              <p className="text-sm text-surface-700 font-medium truncate max-w-[200px]" title={rec.diagnosis}>
+                                {rec.diagnosis}
+                              </p>
+                            </td>
+                            <td className="px-4 py-4">
+                              <p className="text-xs text-surface-500">{new Date(rec.created_at).toLocaleDateString()}</p>
+                              <p className="text-[10px] text-surface-400">{new Date(rec.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                            </td>
+                            <td className="px-4 py-4">
+                              <Badge variant="success">Completed</Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardBody>
+            </Card>
           </div>
         )}
       </div>

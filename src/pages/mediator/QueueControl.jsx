@@ -12,7 +12,7 @@ import { QUEUE_STATUS_CONFIG, QUEUE_TYPE_CONFIG, formatRelativeTime } from '@/ut
 import toast from 'react-hot-toast'
 
 export default function QueueControl() {
-  const { entries, loadQueue, updateStatus, changePriority } = useQueueStore()
+  const { entries, loadQueue, updateStatus, changePriority, isLoading } = useQueueStore()
   const [doctorFilter, setDoctorFilter] = useState('')
   const [doctors, setDoctors] = useState([])
 
@@ -95,13 +95,13 @@ export default function QueueControl() {
                     </div>
 
                     {/* Avatar */}
-                    <Avatar name={entry.patient?.full_name} size="sm" className="flex-shrink-0" />
+                    <Avatar name={entry.patient_name || entry.patient?.full_name} size="sm" className="flex-shrink-0" />
 
                     {/* Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <div>
-                          <p className="font-semibold text-surface-800">{entry.patient?.full_name}</p>
+                          <p className="font-semibold text-surface-800">{entry.patient_name || entry.patient?.full_name}</p>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                             <span className="font-mono text-xs text-surface-600">{entry.token_number}</span>
                             <Badge variant={entry.queue_type === 'emergency' ? 'danger' : entry.queue_type === 'appointment' ? 'primary' : 'warning'}>
