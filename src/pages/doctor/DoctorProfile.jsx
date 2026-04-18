@@ -44,14 +44,15 @@ export default function DoctorProfile() {
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
 
+  const DAYS_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
   const DEFAULT_SCHEDULE = {
-    monday: { active: true, start: '09:00', end: '17:00', break_start: '', break_end: '' },
-    tuesday: { active: true, start: '09:00', end: '17:00', break_start: '', break_end: '' },
-    wednesday: { active: true, start: '09:00', end: '17:00', break_start: '', break_end: '' },
-    thursday: { active: true, start: '09:00', end: '17:00', break_start: '', break_end: '' },
-    friday: { active: true, start: '09:00', end: '17:00', break_start: '', break_end: '' },
-    saturday: { active: false, start: '10:00', end: '14:00', break_start: '', break_end: '' },
-    sunday: { active: false, start: '10:00', end: '14:00', break_start: '', break_end: '' },
+    monday: { active: true, start: '09:00', end: '22:00', break_start: '', break_end: '' },
+    tuesday: { active: true, start: '09:00', end: '22:00', break_start: '', break_end: '' },
+    wednesday: { active: true, start: '09:00', end: '22:00', break_start: '', break_end: '' },
+    thursday: { active: true, start: '09:00', end: '22:00', break_start: '', break_end: '' },
+    friday: { active: true, start: '09:00', end: '22:00', break_start: '', break_end: '' },
+    saturday: { active: true, start: '10:00', end: '14:00', break_start: '', break_end: '' },
+    sunday: { active: true, start: '10:00', end: '14:00', break_start: '', break_end: '' },
   }
 
   const [locations, setLocations] = useState([])
@@ -565,11 +566,67 @@ export default function DoctorProfile() {
                        <Input label="Clinic Name" value={loc.name} onChange={e => handleLocationChange(loc.id, 'name', e.target.value)} />
                        <Input label="Full Address" value={loc.address} onChange={e => handleLocationChange(loc.id, 'address', e.target.value)} />
                     </div>
-                    {/* Collapsible/Simplified Schedule View could go here */}
-                 </div>
-               ))}
+                    {/* Collapsible/Simplified Schedule View */}
+                    <div className="mt-6 border-t border-surface-100 pt-6">
+                       <button 
+                         type="button"
+                         onClick={() => setShowSchedule(!showSchedule)}
+                         className="flex items-center justify-between w-full py-2 group"
+                       >
+                          <p className="text-sm font-bold text-surface-800 flex items-center gap-2">
+                             <Clock className="w-4 h-4 text-primary-500" /> Clinical Hours & Availability
+                          </p>
+                          {showSchedule ? <ChevronUp className="w-4 h-4 text-surface-400 group-hover:text-surface-600" /> : <ChevronDown className="w-4 h-4 text-surface-400 group-hover:text-surface-600" />}
+                       </button>
+
+                       {showSchedule && (
+                         <div className="mt-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                            {DAYS_ORDER.map((day) => {
+                               const config = loc.schedule[day] || { active: false, start: '09:00', end: '17:00' };
+                               return (
+                               <div key={day} className={`flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-xl border ${config.active ? 'bg-white border-primary-100 shadow-sm' : 'bg-surface-50 border-surface-100 opacity-60'}`}>
+                                  <div className="flex items-center gap-3 min-w-[120px]">
+                                     <input 
+                                        type="checkbox" 
+                                        checked={config.active}
+                                        onChange={(e) => handleScheduleChange(loc.id, day, 'active', e.target.checked)}
+                                        className="w-4 h-4 rounded text-primary-600 focus:ring-primary-500 border-surface-300 cursor-pointer"
+                                     />
+                                     <span className="text-sm font-bold capitalize text-surface-700">{day}</span>
+                                  </div>
+                                  
+                                  {config.active && (
+                                     <div className="flex-1 grid grid-cols-2 sm:flex sm:items-center gap-4">
+                                        <div className="flex items-center gap-2">
+                                           <span className="text-[10px] font-bold text-surface-400 uppercase">Start</span>
+                                           <input 
+                                              type="time" 
+                                              value={config.start} 
+                                              onChange={e => handleScheduleChange(loc.id, day, 'start', e.target.value)}
+                                              className="bg-surface-50 border-none rounded-lg px-2 py-1 text-xs focus:ring-2 focus:ring-primary-500/50 outline-none"
+                                           />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                           <span className="text-[10px] font-bold text-surface-400 uppercase">End</span>
+                                           <input 
+                                              type="time" 
+                                              value={config.end} 
+                                              onChange={e => handleScheduleChange(loc.id, day, 'end', e.target.value)}
+                                              className="bg-surface-50 border-none rounded-lg px-2 py-1 text-xs focus:ring-2 focus:ring-primary-500/50 outline-none"
+                                           />
+                                        </div>
+                                     </div>
+                                  )}
+                               </div>
+                               );
+                            })}
+                         </div>
+                       )}
+                     </div>
+                  </div>
+                ))}
             </CardBody>
-          </Card>
+           </Card>
 
           <div className="sticky bottom-6 flex justify-end">
             <Button type="submit" isLoading={isSaving} size="lg" className="shadow-premium shadow-primary-500/20">

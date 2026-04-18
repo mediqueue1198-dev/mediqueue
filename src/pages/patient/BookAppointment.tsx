@@ -44,6 +44,7 @@ export default function BookAppointment() {
   const { createAppointment, isLoading } = useAppointments()
   const { user, profile } = useAuth()
   const [familyMembers, setFamilyMembers] = useState<any[]>([])
+  const [patientProfile, setPatientProfile] = useState<any>(null)
   const navigate = useNavigate()
   
   // Payment state
@@ -62,6 +63,7 @@ export default function BookAppointment() {
 
     if (user?.id) {
       patientsService.getFamilyMembers(user.id).then(setFamilyMembers)
+      patientsService.getByUserId(user.id).then(setPatientProfile)
     }
   }, [user?.id])
 
@@ -161,11 +163,23 @@ export default function BookAppointment() {
         }
       }
       
+      const finalPatientId = user?.id
+      
+      if (!finalPatientId) {
+        throw new Error('User session not found. Please log in again.')
+      }
+
+      console.log('Attempting to create appointment with data:', {
+        ...rest,
+        patient_id: finalPatientId,
+        status: 'pending'
+      });
+      
       await createAppointment({
         ...rest,
         notes: finalNotes.trim(),
         family_member_id: patient_type === 'family' ? family_member_id : null,
-        patient_id: user?.id,
+        patient_id: finalPatientId,
         status: 'pending',
         consultation_fee: consultationFee,
         total_amount: consultationFee,

@@ -181,8 +181,12 @@ CREATE POLICY "Allow public read access to hospitals" ON public.hospitals FOR SE
 CREATE POLICY "Allow public read access to doctors" ON public.doctors FOR SELECT USING (true);
 
 -- User Profile Policies
-CREATE POLICY "Users can view their own profile" ON public.users FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Allow public read access to user profiles" ON public.users FOR SELECT USING (true);
 CREATE POLICY "Users can update their own profile" ON public.users FOR UPDATE USING (auth.uid() = id);
+
+-- Patient Policies
+CREATE POLICY "Patients can view their own records" ON public.patients FOR SELECT USING (user_id = auth.uid());
+CREATE POLICY "Service providers can view patient records" ON public.patients FOR SELECT USING (true);
 
 -- Mediator Privacy Policies (LOCKED DOWN)
 CREATE POLICY "Mediators can view their own assignment status" ON public.mediator_assignments
@@ -201,6 +205,20 @@ CREATE POLICY "Secure queue access" ON public.queue_entries
     doctor_id IN (SELECT doctor_id FROM public.mediator_assignments WHERE status = 'approved' AND mediator_id IN (SELECT id FROM public.mediators WHERE user_id = auth.uid())) OR
     patient_id IN (SELECT id FROM public.patients WHERE user_id = auth.uid())
   );
+
+-- Appointments Access
+CREATE POLICY "Patients can manage their own appointments" ON public.appointments
+  FOR ALL USING (patient_id IN (SELECT id FROM public.patients WHERE user_id = auth.uid()));
+
+CREATE POLICY "Doctors and staff can manage appointments" ON public.appointments
+  FOR ALL USING (
+    doctor_id IN (SELECT id FROM public.doctors WHERE user_id = auth.uid()) OR
+    doctor_id IN (SELECT doctor_id FROM public.mediator_assignments WHERE status = 'approved' AND mediator_id IN (SELECT id FROM public.mediators WHERE user_id = auth.uid()))
+  );
+
+-- Notifications Access
+CREATE POLICY "Users can manage their own notifications" ON public.notifications
+  FOR ALL USING (user_id = auth.uid());
 
 -- 5. FUNCTIONS & TRIGGERS
 -- ────────────────────────────────────────────────────────────
