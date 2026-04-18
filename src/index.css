@@ -239,9 +239,34 @@
       inset 0 2px 4px 0 rgba(255, 255, 255, 0.05);
   }
 
+  .shadow-premium {
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 2px 10px -2px rgba(0, 0, 0, 0.02);
+  }
+
+  .shadow-premium-lg {
+    box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.08), 0 10px 20px -4px rgba(0, 0, 0, 0.04);
+  }
+
   /* Page Transitions */
   .page-enter {
     @apply animate-fade-in-up;
+  }
+
+  .shadow-premium-xl {
+    box-shadow: 
+      0 25px 50px -12px rgba(0, 0, 0, 0.1), 
+      0 10px 20px -5px rgba(0, 0, 0, 0.04),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  }
+
+  @keyframes pulse-subtle {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.05); opacity: 0.9; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  .animate-pulse-subtle {
+    animation: pulse-subtle 3s ease-in-out infinite;
   }
 }
 

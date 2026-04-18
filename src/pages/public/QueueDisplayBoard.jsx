@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Heart, Wifi, Clock } from 'lucide-react'
 import { useQueueStore } from '@/store/queueStore'
-import { formatTime } from '@/utils/helpers'
 
 function DoctorBoard({ doctor, queue }) {
   const current = queue.find(e => e.status === 'in_consultation')
@@ -77,7 +76,7 @@ export default function QueueDisplayBoard() {
     
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(timer)
-  }, [])
+  }, [loadQueue])
 
   const getQueueForDoctor = (doctorId) =>
     entries.filter(e => e.doctor_id === doctorId)

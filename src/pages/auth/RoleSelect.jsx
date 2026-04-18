@@ -27,11 +27,11 @@ export default function RoleSelect() {
     },
     {
       id: 'mediator',
-      title: 'Hospital Staff',
-      description: 'Manage hospital queues, walk-ins, and doctor schedules.',
+      title: 'Mediator',
+      description: 'Manage clinic operations, walk-in registration, and staff.',
       icon: Building2,
-      color: 'bg-warning-500',
-      shadow: 'shadow-warning-500/20'
+      color: 'bg-amber-500',
+      shadow: 'shadow-amber-500/20'
     }
   ]
 

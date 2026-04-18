@@ -28,3 +28,6 @@ supabase/.temp/
 
 # Plans
 src/plans/
+
+# Scratch
+scratch/
