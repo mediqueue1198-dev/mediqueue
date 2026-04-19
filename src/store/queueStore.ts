@@ -226,6 +226,9 @@ export const useQueueStore = create<QueueState>()((set, get) => ({
   // ─── UPDATE STATUS ─────────────────────────────────────────────────────────
   updateStatus: async (entryId: string, status: string, extras = {}) => {
     const { supabase } = await import('@/lib/supabase')
+    const entry = get().entries.find(e => e.id === entryId)
+    if (!entry) return
+
     const now = new Date().toISOString()
     const updates: any = { status, ...extras }
 
@@ -233,13 +236,12 @@ export const useQueueStore = create<QueueState>()((set, get) => ({
       updates.consultation_started_at = now
     }
     if (status === 'in_consultation') {
-      get().startNoShowTimer(entryId, null, now)
+      get().startNoShowTimer(entryId, entry.doctor_id, now)
     }
     if (status === 'completed') {
       updates.completed_at = now
       updates.consultation_ended_at = now
-      const entry = get().entries.find(e => e.id === entryId)
-      if (entry?.consultation_started_at) {
+      if (entry.consultation_started_at) {
         const durationMinutes = Math.round(
           (new Date(now).getTime() - new Date(entry.consultation_started_at).getTime()) / 60000
         )
@@ -324,10 +326,7 @@ export const useQueueStore = create<QueueState>()((set, get) => ({
     }
   },
 
-  addFromAppointment: async (appointment: any, doctorInfo = null) => {
-    const state = get()
-    const doctorEntries = state.entries.filter(e => e.doctor_id === appointment.doctor_id)
-    const token = generateToken('appointment', doctorEntries, doctorInfo)
+  addFromAppointment: async (appointment: any) => {
     const priorityScore = calculatePriorityScore({
       queue_type: 'appointment',
       created_at: new Date().toISOString(),
@@ -339,7 +338,6 @@ export const useQueueStore = create<QueueState>()((set, get) => ({
     const { data: inserted, error: rpcError } = await supabase.rpc('check_in_from_appointment', {
       p_appointment_id: appointment.id,
       p_doctor_id: appointment.doctor_id,
-      p_token: token,
       p_priority_score: Math.round(priorityScore || 100),
       p_predicted_time: Math.round(appointment.duration_minutes || 15),
     })
@@ -355,7 +353,7 @@ export const useQueueStore = create<QueueState>()((set, get) => ({
       const doctor = fullInserted.doctor
       await notificationService.sendTokenGeneratedNotification(
         appointment.patient_id,
-        token,
+        fullInserted.token_number,
         doctor?.user?.full_name || doctor?.name || 'Doctor'
       )
     } catch (err) {
@@ -383,15 +381,7 @@ export const useQueueStore = create<QueueState>()((set, get) => ({
     return fullInserted
   },
 
-  addWalkIn: async (data: any, doctorInfo = null) => {
-    const state = get()
-    const doctorEntries = state.entries.filter(e => e.doctor_id === data.doctor_id)
-    const token = generateToken(
-      data.is_emergency ? 'emergency' : 'walk_in',
-      doctorEntries,
-      doctorInfo
-    )
-
+  addWalkIn: async (data: any) => {
     const { supabase } = await import('@/lib/supabase')
     const { data: rpcResult, error: rpcError } = await supabase.rpc('register_walk_in_patient', {
       p_full_name: data.full_name,
@@ -399,7 +389,6 @@ export const useQueueStore = create<QueueState>()((set, get) => ({
       p_doctor_id: data.doctor_id,
       p_symptoms: data.symptoms || '',
       p_is_emergency: data.is_emergency || false,
-      p_token: token,
     })
 
     if (!rpcError && rpcResult) {

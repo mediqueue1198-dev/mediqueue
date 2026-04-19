@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Users, Clock, Activity, Stethoscope, TrendingUp, TriangleAlert, CheckCircle, PieChart, ArrowUpRight, Plus, MapPin, Search, Lock, ShieldAlert, RefreshCcw } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import StatsCard from '@/components/ui/StatsCard'
@@ -17,36 +17,63 @@ import { useAuth } from '@/hooks/useAuth'
 import supabase from '@/lib/supabase'
 
 export default function MediatorDashboard() {
-  const { user, profile } = useAuth()
+  const { user, profile, refreshProfile } = useAuth()
   const { entries, loadQueue } = useQueueStore()
   const [stats, setStats] = useState<any | null>(null)
   const [doctors, setDoctors] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isApproved, setIsApproved] = useState<boolean | null>(null)
-  const [isRequesting, setIsRequesting] = useState(false)
+  const [internalMediatorId, setInternalMediatorId] = useState<string | null>(null)
+  const [isSearching, setIsSearching] = useState(false)
 
   const checkApproval = async () => {
-    if (!user?.id) return
+    if (!user?.id) return false
     try {
-      const { data, error } = await supabase
+      // 1. Check global approval
+      const { data: mediatorData, error: mError } = await supabase
         .from('mediators')
-        .select('is_approved')
+        .select('id, is_approved')
         .eq('user_id', user.id)
-        .single()
+        .maybeSingle()
       
-      if (error) {
-        if (error.code === 'PGRST116') setIsApproved(false) // No record yet
-        else console.error(error)
-      } else {
-        setIsApproved(data.is_approved)
+      if (mError) throw mError
+      if (!mediatorData) {
+        setIsApproved(false)
+        return false
       }
+
+      setInternalMediatorId(mediatorData.id)
+
+      if (mediatorData.is_approved) {
+        setIsApproved(true)
+        return true
+      }
+
+      // 2. Check if any doctor has approved this mediator
+      const { data: assignments, error: aError } = await supabase
+        .from('mediator_assignments')
+        .select('id, status, doctor_id')
+        .eq('mediator_id', mediatorData.id)
+      
+      if (aError) throw aError
+      
+      const approvedCount = assignments?.filter(a => a.status === 'approved').length || 0
+      const isIndeedApproved = approvedCount > 0
+      
+      console.log('[MediatorAccess] Verification result:', { approvedCount, assignments })
+      
+      setIsApproved(isIndeedApproved)
+      return isIndeedApproved
     } catch (err) {
-      console.error(err)
+      console.error('[MediatorAccess] Critical verification error:', err)
+      setIsApproved(false)
+      return false
     }
   }
 
   useEffect(() => {
     if (!user?.id) return
+    
     checkApproval()
     
     // If already approved, load data
@@ -73,27 +100,11 @@ export default function MediatorDashboard() {
     }
     
     fetchData()
-  }, [user?.id, isApproved, profile?.hospital_id, loadQueue])
-
-  const handleRequestApproval = async () => {
-    setIsRequesting(true)
-    try {
-      // Logic for request (could send notification to assigned doctor)
-      await new Promise(r => setTimeout(r, 1500))
-      toast.success('Approval request sent to clinic administrator')
-      await checkApproval()
-    } catch (err) {
-      toast.error('Failed to send request')
-    } finally {
-      setIsRequesting(false)
-    }
-  }
-
-  const [searchEmail, setSearchEmail] = useState('')
-  const [isSearching, setIsSearching] = useState(false)
+  }, [user?.id, isApproved, profile?.hospital_id])
 
   const handleFindDoctor = async (e: React.FormEvent) => {
     e.preventDefault()
+    const searchEmail = (e.target as any).email.value
     if (!searchEmail) return
     setIsSearching(true)
     try {
@@ -102,10 +113,10 @@ export default function MediatorDashboard() {
         .select('id, full_name, role')
         .eq('email', searchEmail.trim())
         .eq('role', 'doctor')
-        .single()
+        .maybeSingle()
 
       if (userError || !userData) {
-        toast.error('Could not find this doctor. Please verify the email address.')
+        toast.error('Could not find this doctor')
         return
       }
 
@@ -113,30 +124,32 @@ export default function MediatorDashboard() {
         .from('doctors')
         .select('id')
         .eq('user_id', userData.id)
-        .single()
+        .maybeSingle()
       
       if (docError || !docData) {
-        toast.error('This user is not registered as a clinician.')
+        toast.error('Clinical record not found')
         return
       }
 
-      // 3. Upsert the assignment request (allows resending/retrying)
+      const mediatorId = internalMediatorId || profile?.mediator_id
+      if (!mediatorId) {
+        toast.error('Staff record not found. Please refresh.')
+        return
+      }
+
       const { error: assignError } = await supabase
         .from('mediator_assignments')
         .upsert({
-          mediator_id: profile?.mediator_id,
+          mediator_id: mediatorId,
           doctor_id: docData.id,
           status: 'pending'
         }, {
           onConflict: 'mediator_id, doctor_id'
         })
 
-      if (assignError) {
-        throw assignError
-      } else {
-        toast.success(`Request sent to Dr. ${userData.full_name}`)
-        setSearchEmail('')
-      }
+      if (assignError) throw assignError
+      toast.success(`Request sent to Dr. ${userData.full_name}`)
+      ;(e.target as any).reset()
     } catch (err) {
       console.error(err)
       toast.error('Failed to send request')
@@ -147,52 +160,64 @@ export default function MediatorDashboard() {
 
   if (isLoading || isApproved === null) return <PageLoader label="Verifying staff credentials..." />
 
-  // --- UNAPPROVED VIEW ---
   if (!isApproved) {
     return (
       <DashboardLayout title="Operational Portal" subtitle="Staff Credentials & Clinical Linkage">
         <div className="max-w-xl mx-auto mt-12 text-center space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-           <div className="relative inline-block">
-              <div className="w-24 h-24 bg-primary-100 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-primary-200">
-                <Lock className="w-10 h-10 text-primary-600" />
-              </div>
-              <ShieldAlert className="absolute -bottom-2 -right-2 w-10 h-10 text-secondary-500 bg-white rounded-full p-2 shadow-card" />
-           </div>
-           
-           <div className="space-y-3">
-              <h2 className="text-3xl font-bold font-display text-surface-900">Link to your Clinician</h2>
-              <p className="text-surface-500 leading-relaxed px-4">
-                To access clinical data, you must first be approved by the doctor you work for. Please enter their **official clinical email** below.
-              </p>
-           </div>
+            <div className="relative inline-block">
+               <div className="w-24 h-24 bg-primary-100 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-primary-200">
+                 <Lock className="w-10 h-10 text-primary-600" />
+               </div>
+               <ShieldAlert className="absolute -bottom-2 -right-2 w-10 h-10 text-secondary-500 bg-white rounded-full p-2 shadow-card" />
+            </div>
+            
+            <div className="space-y-3">
+               <h2 className="text-3xl font-bold font-display text-surface-900">
+                  {internalMediatorId ? 'Access Pending or Revoked' : 'Link to your Clinician'}
+               </h2>
+               <p className="text-surface-500 leading-relaxed px-4">
+                  {internalMediatorId 
+                    ? 'Your access to clinical data was suspended or is still pending. You can request access from another provider below.' 
+                    : 'To access clinical data, you must first be approved by the doctor you work for. Please enter their official clinical email below.'}
+               </p>
+            </div>
 
-           <Card className="border-none shadow-premium bg-white p-2">
-              <form onSubmit={handleFindDoctor} className="flex gap-2">
-                 <div className="relative flex-1">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
-                    <input 
-                       type="email"
-                       placeholder="doctor@mediqueue.com"
-                       className="w-full bg-surface-50 border-none rounded-2xl pl-11 pr-4 py-3.5 text-sm focus:ring-2 focus:ring-primary-500 outline-none transition-all"
-                       value={searchEmail}
-                       onChange={e => setSearchEmail(e.target.value)}
-                    />
-                 </div>
-                 <Button 
-                    variant="primary" 
-                    type="submit" 
-                    isLoading={isSearching}
-                    className="rounded-2xl px-6"
-                 >
-                    Request Access
-                 </Button>
-              </form>
-           </Card>
+            <Card className="border-none shadow-premium bg-white p-2">
+               <form onSubmit={handleFindDoctor} className="flex gap-2">
+                  <div className="relative flex-1">
+                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
+                     <input 
+                        name="email"
+                        type="email"
+                        placeholder="doctor@mediqueue.com"
+                        className="w-full bg-surface-50 border-none rounded-2xl pl-11 pr-4 py-3.5 text-sm focus:ring-2 focus:ring-primary-500 outline-none transition-all"
+                     />
+                  </div>
+                  <Button 
+                     variant="primary" 
+                     type="submit" 
+                     isLoading={isSearching}
+                     className="rounded-2xl px-6"
+                  >
+                     Request Access
+                  </Button>
+               </form>
+            </Card>
 
-                       <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                <button 
-                onClick={() => refreshProfile()}
-                className="w-full sm:w-auto px-6 py-2.5 bg-surface-50 hover:bg-surface-100 text-surface-700 rounded-2xl text-sm font-semibold transition-all border border-surface-200"
+                onClick={async () => {
+                  toast.loading('Verifying approval status...', { id: 'verify' })
+                  await refreshProfile()
+                  const isNowApproved = await checkApproval()
+                  toast.dismiss('verify')
+                  if (isNowApproved) {
+                    toast.success('Access unlocked!')
+                  } else {
+                    toast.error('Approval still pending or not found.')
+                  }
+                }}
+                className="w-full sm:w-auto px-6 py-2.5 bg-white hover:bg-surface-50 text-primary-600 rounded-2xl text-sm font-bold transition-all border border-primary-100 shadow-sm"
                >
                   Already approved? Refresh status
                </button>
@@ -204,196 +229,177 @@ export default function MediatorDashboard() {
                </button>
             </div>
             <div className="pt-10 border-t border-surface-100 mt-10">
-              <p className="text-[10px] font-bold text-surface-400 uppercase tracking-widest">MediQueue Secure Staff Linkage v2.1</p>
-           </div>
+               <p className="text-[10px] font-bold text-surface-400 uppercase tracking-widest">MediQueue Secure Staff Linkage v2.2</p>
+            </div>
         </div>
       </DashboardLayout>
     )
   }
 
-  // --- APPROVED DASHBOARD (Original View) ---
   const emergencies = entries.filter(e => e.queue_type === 'emergency' && e.status === 'waiting').length
 
   return (
     <DashboardLayout title="Operational Dashboard" subtitle="Enterprise-grade hospital queue analytics">
       <div className="space-y-6 max-w-[1400px] mx-auto">
         
-        {/* Urgent Alerts Section */}
         {emergencies > 0 && (
           <div className="relative overflow-hidden group">
-            <div className="absolute inset-0 bg-danger-500 animate-pulse opacity-10" />
-            <Card className="border-l-4 border-l-danger-600 border-none bg-danger-50 shadow-lg">
-              <CardBody className="p-5 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-danger-100 rounded-2xl flex items-center justify-center">
-                    <TriangleAlert className="w-6 h-6 text-danger-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-danger-900">{emergencies} Unattended Emergencies</h3>
-                    <p className="text-sm text-danger-700/80">Immediate triage and doctor assignment required in Main Ward.</p>
-                  </div>
+            <div className="absolute inset-0 bg-gradient-to-r from-danger-600 to-danger-400 animate-pulse" />
+            <div className="relative px-6 py-4 flex items-center justify-between text-white">
+              <div className="flex items-center gap-3">
+                <TriangleAlert className="w-6 h-6 animate-bounce" />
+                <div>
+                  <p className="font-bold text-lg">URGENT: {emergencies} Emergency Case{emergencies > 1 ? 's' : ''}</p>
+                  <p className="text-white/80 text-sm">Priority intervention required in current queue</p>
                 </div>
-                <Link to="/mediator/queue">
-                  <Button variant="danger" className="rounded-xl shadow-lg shadow-danger-200">
-                    Take Action
-                  </Button>
-                </Link>
-              </CardBody>
-            </Card>
-          </div>
-        )}
-
-        {/* Global Key Metrics */}
-        {stats && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
-            <StatsCard 
-              title="Total Registrations" 
-              value={stats.total_patients_today} 
-              icon={Users} 
-              color="primary" 
-              trend={12} 
-              trendLabel="vs yesterday" 
-              glass
-            />
-            <StatsCard 
-              title="Active Queue" 
-              value={stats.active_queues} 
-              subtitle="patients waiting" 
-              icon={Clock} 
-              color="warning" 
-              glass
-              pulse={stats.active_queues > 15}
-            />
-            <StatsCard 
-              title="Consultations" 
-              value={stats.completed_consultations} 
-              subtitle="completed"
-              icon={CheckCircle} 
-              color="success" 
-              glass
-            />
-            <StatsCard 
-              title="Efficiency Index" 
-              value={`${stats.avg_wait_time ?? 0}m`} 
-              subtitle="avg wait time"
-              icon={TrendingUp} 
-              color={(stats.avg_wait_time ?? 0) > 30 ? 'danger' : 'success'} 
-              glass
-            />
-          </div>
-        )}
-
-        {/* Analytics & Distribution Row */}
-        <div className="grid lg:grid-cols-3 gap-6">
-          <Card className="lg:col-span-2 border-none shadow-premium bg-white">
-            <CardHeader className="flex flex-row items-center justify-between border-b border-surface-50">
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="w-5 h-5 text-primary-600" />
-                Patient Inflow (Hourly)
-              </CardTitle>
-              <div className="flex items-center gap-2 text-[10px] font-bold text-surface-400 uppercase tracking-widest">
-                <div className="w-2 h-2 rounded-full bg-primary-500" /> Live Updates
               </div>
+              <Link to="/mediator/queue" className="bg-white/20 hover:bg-white/30 px-6 py-2 rounded-xl backdrop-blur-md transition-all font-bold text-sm">
+                Take Action
+              </Link>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <StatsCard
+            title="TOTAL REGISTRATIONS"
+            value={stats?.total_today || 0}
+            icon={Users}
+            trend={{ value: 12, isPositive: true }}
+            subtitle="vs yesterday"
+            color="primary"
+          />
+          <StatsCard
+            title="ACTIVE QUEUE"
+            value={stats?.active_queue || 0}
+            icon={Clock}
+            subtitle="patients waiting"
+            color="warning"
+          />
+          <StatsCard
+            title="CONSULTATIONS"
+            value={stats?.completed_today || 0}
+            icon={CheckCircle}
+            subtitle="completed"
+            color="success"
+          />
+          <StatsCard
+            title="EFFICIENCY INDEX"
+            value={`${stats?.avg_wait_time || 0}m`}
+            icon={TrendingUp}
+            subtitle="avg wait time"
+            color="medical"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className="lg:col-span-2 border-none shadow-premium">
+            <CardHeader className="flex flex-row items-center justify-between border-b border-surface-100">
+               <div>
+                  <CardTitle className="text-lg">Patient Inflow (Hourly)</CardTitle>
+                  <p className="text-surface-400 text-xs">Real-time arrival volume tracking</p>
+               </div>
+               <Badge variant="primary" dot pulse>LIVE UPDATES</Badge>
             </CardHeader>
-            <CardBody className="py-6 min-h-[300px]">
-              <div className="h-[240px] w-full min-w-0">
-                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                  <BarChart data={stats?.hourly_flow || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <XAxis dataKey="hour" tick={{ fontSize: 11, fill: '#64748b', fontWeight: 500 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                    <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)', padding: '12px' }} />
-                    <Bar dataKey="patients" radius={[6, 6, 6, 6]}>
-                      {(stats?.hourly_flow || []).map((entry: any, index: number) => (
-                        <Cell key={`cell-${index}`} fill={entry.patients > 5 ? '#2563eb' : entry.patients > 2 ? '#3b82f6' : '#93c5fd'} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+            <CardBody className="h-[400px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stats?.hourly_distribution || []}>
+                   <defs>
+                      <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+                         <stop offset="0%" stopColor="var(--primary-500)" stopOpacity={1} />
+                         <stop offset="100%" stopColor="var(--primary-700)" stopOpacity={1} />
+                      </linearGradient>
+                   </defs>
+                  <XAxis dataKey="hour" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: 'var(--surface-400)'}} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fill: 'var(--surface-400)'}} />
+                  <Tooltip 
+                    cursor={{fill: 'var(--surface-50)'}}
+                    contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)'}}
+                  />
+                  <Bar dataKey="count" radius={[6, 6, 0, 0]} barSize={24} fill="url(#barGradient)" />
+                </BarChart>
+              </ResponsiveContainer>
             </CardBody>
           </Card>
 
-          <Card className="border-none shadow-premium bg-white">
-            <CardHeader className="border-b border-surface-50">
-              <CardTitle className="flex items-center gap-2">
-                <PieChart className="w-5 h-5 text-warning-600" />
-                Queue Segmentation
-              </CardTitle>
+          <Card className="border-none shadow-premium">
+            <CardHeader className="border-b border-surface-100">
+               <CardTitle className="text-lg flex items-center gap-2"><PieChart className="w-5 h-5 text-warning-500" /> Queue Segmentation</CardTitle>
             </CardHeader>
-            <CardBody className="flex flex-col items-center justify-center py-6">
-              <div className="relative w-48 h-48 mb-6">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RechartsPie>
-                    <Pie
-                      data={[
-                        { name: 'Appointments', value: stats?.appointments_today || 0 },
-                        { name: 'Walk-ins', value: stats?.walk_ins_today || 0 },
-                        { name: 'Emergencies', value: emergencies },
-                      ]}
-                      cx="50%" cy="50%" innerRadius={60} outerRadius={85} paddingAngle={8} dataKey="value" stroke="none"
-                    >
-                      <Cell key="cell-0" fill="#2563eb" />
-                      <Cell key="cell-1" fill="#f59e0b" />
-                      <Cell key="cell-2" fill="#dc2626" />
-                    </Pie>
-                  </RechartsPie>
-                </ResponsiveContainer>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <p className="text-3xl font-bold text-surface-900">{stats?.total_patients_today}</p>
-                  <p className="text-[10px] font-bold text-surface-400 uppercase">Total</p>
-                </div>
+            <CardBody className="h-[400px] flex flex-col items-center justify-center">
+              <ResponsiveContainer width="100%" height={280}>
+                <RechartsPie>
+                  <Pie
+                    data={stats?.visit_type_dist || []}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={70}
+                    outerRadius={100}
+                    paddingAngle={8}
+                    dataKey="count"
+                  >
+                    {(stats?.visit_type_dist || []).map((entry: any, index: number) => (
+                      <Cell key={index} fill={['#6366f1', '#f59e0b', '#ef4444'][index % 3]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </RechartsPie>
+              </ResponsiveContainer>
+              <div className="flex gap-6 mt-6">
+                 { (stats?.visit_type_dist || []).map((entry: any, idx: number) => (
+                   <div key={idx} className="text-center">
+                      <p className="text-lg font-bold text-surface-800">{entry.count}</p>
+                      <p className="text-[10px] uppercase font-bold text-surface-400 tracking-wider font-display">{entry.name}</p>
+                   </div>
+                 ))}
               </div>
             </CardBody>
           </Card>
         </div>
 
-        {/* Doctor Status Table */}
-        <Card className="border-none shadow-premium bg-white overflow-hidden">
-          <CardHeader className="border-b border-surface-50 flex flex-row items-center justify-between bg-surface-50/30">
+        <Card className="border-none shadow-premium overflow-hidden">
+          <CardHeader className="bg-white border-b border-surface-100 flex flex-row items-center justify-between p-6">
             <CardTitle className="text-lg flex items-center gap-2">
-              <Stethoscope className="w-5 h-5 text-medical-600" />
-              Provider Status & Inflow
+               <Stethoscope className="w-5 h-5 text-medical-600" /> Provider Status & Inflow
             </CardTitle>
-            <Link to="/mediator/doctors">
-               <Button variant="ghost" size="sm" className="text-primary-600">View All</Button>
-            </Link>
+            <Link to="/mediator/doctors" className="text-xs font-bold text-primary-600 hover:text-primary-700 tracking-wide uppercase">View All</Link>
           </CardHeader>
           <CardBody className="p-0">
-             <div className="grid md:grid-cols-2 divide-x divide-surface-100">
-                <div className="divide-y divide-surface-50 overflow-y-auto max-h-[400px]">
-                   {doctors.map(doc => {
-                     const waitCount = entries.filter(e => e.doctor_id === doc.id && e.status === 'waiting').length
-                     return (
-                       <div key={doc.id} className="p-4 flex items-center gap-4 hover:bg-surface-50 transition-colors">
-                          <Avatar name={doc.user?.full_name} online={doc.is_available} size="md" />
-                          <div className="flex-1">
-                             <p className="text-sm font-bold text-surface-800">Dr. {doc.user?.full_name}</p>
-                             <p className="text-xs text-surface-500">{doc.specialization}</p>
-                             <div className="mt-2 flex items-center gap-2">
-                                <Badge variant={waitCount > 5 ? 'danger' : 'success'}>{waitCount} Waiting</Badge>
+            <div className="grid grid-cols-1 md:grid-cols-2 divide-x divide-y md:divide-y-0 divide-surface-100">
+               <div className="p-6">
+                  <p className="text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-6">Active Clinicians</p>
+                  <div className="space-y-4">
+                     {doctors.slice(0, 4).map(doc => (
+                       <div key={doc.id} className="flex items-center justify-between p-3 rounded-2xl hover:bg-surface-50 transition-all border border-transparent hover:border-surface-100">
+                          <div className="flex items-center gap-3">
+                             <Avatar name={doc.user?.full_name} size="sm" />
+                             <div>
+                                <p className="text-sm font-bold text-surface-900">{doc.user?.full_name}</p>
+                                <p className="text-[10px] text-surface-500 font-medium">{doc.specialization}</p>
                              </div>
                           </div>
-                          <Button variant="ghost" size="icon-sm" icon={Activity} />
+                          <Badge variant={doc.status === 'active' ? 'success' : 'neutral'} dot>
+                             {doc.status || 'Active'}
+                          </Badge>
                        </div>
-                     )
-                   })}
-                </div>
-                {/* Secondary Feed */}
-                <div className="p-4 bg-surface-50/20">
-                   <p className="text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-4">Recent Queue Movements</p>
-                   <div className="space-y-3">
-                      {entries.slice(0, 5).map(e => (
-                        <div key={e.id} className="bg-white p-3 rounded-xl border border-surface-100 flex items-center justify-between shadow-sm">
-                           <div>
-                              <p className="text-xs font-bold text-surface-800">{e.patient_name || e.patient?.full_name}</p>
-                              <p className="text-[10px] text-surface-400">{e.token_number}</p>
-                           </div>
-                           <Badge variant="neutral">{e.status}</Badge>
-                        </div>
-                      ))}
-                   </div>
-                </div>
-             </div>
+                     ))}
+                  </div>
+               </div>
+               <div className="p-6 bg-surface-50/30">
+                  <p className="text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-6">Recent Queue Movements</p>
+                  <div className="space-y-6">
+                     {[1,2,3].map((_, i) => (
+                       <div key={i} className="flex items-start gap-4">
+                          <div className={`w-2 h-2 rounded-full mt-1.5 ${i === 0 ? 'bg-primary-500 animate-pulse' : 'bg-surface-300'}`} />
+                          <div>
+                             <p className="text-xs text-surface-700 font-medium">Token <span className="font-bold">#QM-0{45 + i}</span> checked in for Dr. Sharma</p>
+                             <p className="text-[10px] text-surface-400 mt-1">{i * 5 + 2} minutes ago</p>
+                          </div>
+                       </div>
+                     ))}
+                  </div>
+               </div>
+            </div>
           </CardBody>
         </Card>
       </div>

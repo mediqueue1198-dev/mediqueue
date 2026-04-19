@@ -163,10 +163,10 @@ export default function QueueStatus() {
   }
 
   const getEstimatedWaitForEntry = (entry: QueueEntry) => {
-    const position = getPositionInQueue(entry.id)
-    if (position === 0) return 0
+    const entryIdx = waitingEntries.findIndex(e => e.id === entry.id)
+    if (entryIdx === -1) return 0
     
-    const entriesAhead = waitingEntries.slice(0, position - 1)
+    const entriesAhead = waitingEntries.slice(0, entryIdx)
     return calculateEstimatedWaitSync([...entriesAhead, entry] as any, doctorAvgTime)
   }
 

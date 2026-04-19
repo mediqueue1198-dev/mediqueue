@@ -70,14 +70,14 @@ export default function PatientHistory() {
     const loadData = async () => {
       setIsLoadingRecords(true)
       try {
-        let patientUserId = selectedPatient?.user_id
+        let patientId = selectedPatient?.id
         
         if (selectedFamilyMember) {
-          patientUserId = selectedPatient.user_id
           const memberRecords = await patientsService.getMedicalRecords(selectedFamilyMember.patient_id)
           setRecords(memberRecords || [])
         } else {
-          const patientRecords = await patientsService.getMedicalRecords(selectedPatient.user_id)
+          // Now using p.id (Patient ID) instead of User ID
+          const patientRecords = await patientsService.getMedicalRecords(selectedPatient.id)
           setRecords(patientRecords || [])
           
           const members = await patientsService.getFamilyMembers(selectedPatient.user_id)

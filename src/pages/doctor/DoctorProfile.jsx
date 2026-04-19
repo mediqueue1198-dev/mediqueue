@@ -13,6 +13,17 @@ import { PageLoader } from '@/components/ui/LoadingSpinner'
 import toast from 'react-hot-toast'
 import supabase from '@/lib/supabase'
 
+const DAYS_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const DEFAULT_SCHEDULE = {
+  monday: { active: true, start: '09:00', end: '22:00', break_start: '', break_end: '' },
+  tuesday: { active: true, start: '09:00', end: '22:00', break_start: '', break_end: '' },
+  wednesday: { active: true, start: '09:00', end: '22:00', break_start: '', break_end: '' },
+  thursday: { active: true, start: '09:00', end: '22:00', break_start: '', break_end: '' },
+  friday: { active: true, start: '09:00', end: '22:00', break_start: '', break_end: '' },
+  saturday: { active: true, start: '10:00', end: '14:00', break_start: '', break_end: '' },
+  sunday: { active: true, start: '10:00', end: '14:00', break_start: '', break_end: '' },
+}
+
 export default function DoctorProfile() {
   const { user, profile, updateProfile } = useAuth()
   const [doctor, setDoctor] = useState(null)
@@ -43,17 +54,6 @@ export default function DoctorProfile() {
   }
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
-
-  const DAYS_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-  const DEFAULT_SCHEDULE = {
-    monday: { active: true, start: '09:00', end: '22:00', break_start: '', break_end: '' },
-    tuesday: { active: true, start: '09:00', end: '22:00', break_start: '', break_end: '' },
-    wednesday: { active: true, start: '09:00', end: '22:00', break_start: '', break_end: '' },
-    thursday: { active: true, start: '09:00', end: '22:00', break_start: '', break_end: '' },
-    friday: { active: true, start: '09:00', end: '22:00', break_start: '', break_end: '' },
-    saturday: { active: true, start: '10:00', end: '14:00', break_start: '', break_end: '' },
-    sunday: { active: true, start: '10:00', end: '14:00', break_start: '', break_end: '' },
-  }
 
   const [locations, setLocations] = useState([])
   const [showSchedule, setShowSchedule] = useState(true)
@@ -117,16 +117,14 @@ export default function DoctorProfile() {
       })
       .catch(err => console.error("Error fetching doctor profile", err))
       .finally(() => setIsLoading(false))
-  }, [user?.id])
+  }, [user?.id, profile?.full_name, profile?.phone, reset])
 
   const loadManagedStaff = async (doctorData) => {
-    // Ensure we use the doctor's table 'id', not their user_id
     const doctorTableId = doctorData?.id
     if (!doctorTableId) return
     
     setIsStaffLoading(true)
     try {
-      // Fetch all assignments for this doctor with explicit relationship hints
       const { data: assignments, error: assignError } = await supabase
         .from('mediator_assignments')
         .select(`
@@ -143,13 +141,15 @@ export default function DoctorProfile() {
       
       if (assignError) throw assignError
       
-      const approved = assignments.filter(a => a.status === 'approved').map(a => ({
+      const allStaff = assignments.filter(a => a.status !== 'rejected').map(a => ({
         ...a.mediator,
         assignment_id: a.id,
+        assignment_status: a.status,
         created_at: a.created_at
       }))
       
-      const pending = assignments.filter(a => a.status === 'pending')
+      const pending = allStaff.filter(s => s.assignment_status === 'pending')
+      const approved = allStaff.filter(s => s.assignment_status === 'approved' || s.assignment_status === 'suspended')
       
       setMediators(approved)
       setPendingRequests(pending)
@@ -168,10 +168,9 @@ export default function DoctorProfile() {
 
     setIsCreatingStaff(true)
     try {
-      // 1. Call the admin PRC function
       const { data, error } = await supabase.rpc('admin_create_mediator', {
         p_email: newMediator.email,
-        p_password_hash: newMediator.password, // In a real app, hash password in Edge function or handle securely
+        p_password_hash: newMediator.password,
         p_full_name: newMediator.full_name,
         p_hospital_id: doctor?.hospital_id,
         p_doctor_id: user.id
@@ -191,17 +190,20 @@ export default function DoctorProfile() {
     }
   }
 
-  const toggleMediatorApproval = async (mediatorId, currentStatus) => {
+  const toggleMediatorApproval = async (mediatorId, assignmentId, currentApproved) => {
+    console.log('[StaffAction] Toggling status:', { mediatorId, assignmentId, currentApproved })
     try {
+      const newStatus = currentApproved ? 'suspended' : 'approved'
       const { error } = await supabase
-        .from('mediators')
-        .update({ is_approved: !currentStatus })
-        .eq('id', mediatorId)
+        .from('mediator_assignments')
+        .update({ status: newStatus })
+        .eq('id', assignmentId)
       
       if (error) throw error
-      toast.success(`Mediator ${!currentStatus ? 'approved' : 'suspended'}`)
-      setMediators(prev => prev.map(m => m.id === mediatorId ? { ...m, is_approved: !currentStatus } : m))
+      toast.success(`Staff access ${currentApproved ? 'suspended' : 'approved'}`)
+      loadManagedStaff(doctor)
     } catch (err) {
+      console.error('[StaffAction] Toggle error:', err)
       toast.error('Failed to update status')
     }
   }
@@ -209,10 +211,7 @@ export default function DoctorProfile() {
   const handleDeleteMediator = async (mediatorId, userId) => {
     if (!confirm('Are you sure you want to remove this staff member? This will delete their account access.')) return
     try {
-      // 1. Delete mediator record
       await supabase.from('mediators').delete().eq('id', mediatorId)
-      // 2. Ideally, delete the user account too (needs admin privileges via Edge Function)
-      // For now, we just remove the mediator relationship
       setMediators(prev => prev.filter(m => m.id !== mediatorId))
       toast.success('Staff member removed')
     } catch (err) {
@@ -321,99 +320,119 @@ export default function DoctorProfile() {
 
         {/* Staff Management Section */}
         <Card className="border-none shadow-premium overflow-hidden">
-          <CardHeader className="bg-surface-900 border-none p-6">
+          <CardHeader className="bg-white border-b border-surface-100 p-6">
              <div className="flex items-center justify-between">
                 <div>
-                   <CardTitle className="text-white text-xl flex items-center gap-2">
-                      <Users className="w-6 h-6 text-primary-400" /> Manage Clinical Staff
+                   <CardTitle className="text-surface-900 text-xl flex items-center gap-2">
+                      <Users className="w-6 h-6 text-primary-600" /> Manage Clinical Staff
                    </CardTitle>
-                   <p className="text-surface-400 text-xs mt-1">Add and approve mediators for your clinic</p>
+                   <p className="text-surface-500 text-xs mt-1 font-medium">Add and approve staff members for your clinical operations</p>
                 </div>
                 <Button 
                   size="sm" 
-                  className="bg-primary-500 hover:bg-primary-600 border-none shadow-lg shadow-primary-900/20"
+                  variant="primary"
                   icon={UserPlus}
                   onClick={() => setShowAddMediator(!showAddMediator)}
+                  className="rounded-xl shadow-lg shadow-primary-500/10"
                 >
                    {showAddMediator ? 'Close' : 'Add Mediator'}
                 </Button>
              </div>
-              {pendingRequests.length > 0 && (
-                <div className="mt-6 space-y-3">
-                   <p className="text-[10px] font-bold text-primary-400 uppercase tracking-widest pl-1">Incoming Staff Requests</p>
-                   {pendingRequests.map(req => (
-                     <div key={req.id} className="bg-surface-800 rounded-2xl p-4 flex items-center justify-between border border-surface-700 animate-in zoom-in-95 duration-300">
-                        <div className="flex items-center gap-4">
-                           <Avatar name={req.mediator?.user?.full_name} size="sm" />
-                           <div>
-                              <p className="text-sm font-bold text-white">{req.mediator?.user?.full_name}</p>
-                              <p className="text-[10px] text-surface-400">{req.mediator?.user?.email}</p>
-                           </div>
-                        </div>
-                        <div className="flex gap-2">
-                           <Button 
-                             size="sm" 
-                             variant="primary" 
-                             className="h-8 rounded-lg"
-                             onClick={() => handleAssignment(req.id, 'approved')}
-                           >
-                             Approve
-                           </Button>
-                           <Button 
-                             size="sm" 
-                             variant="ghost" 
-                             className="h-8 rounded-lg text-danger-400 hover:text-danger-300"
-                             onClick={() => handleAssignment(req.id, 'rejected')}
-                           >
-                             Reject
-                           </Button>
-                        </div>
-                     </div>
-                   ))}
-                </div>
-              )}
-           </CardHeader>
+          </CardHeader>
+
+          {pendingRequests.length > 0 && (
+            <div className="bg-primary-50/50 p-6 border-b border-primary-100">
+               <p className="text-[10px] font-bold text-primary-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+                 <Clock className="w-3.5 h-3.5" /> Incoming Staff Requests
+               </p>
+               <div className="grid gap-3">
+                  {pendingRequests.map(req => (
+                    <div key={req.assignment_id} className="bg-white rounded-2xl p-4 flex items-center justify-between border border-primary-100 shadow-sm animate-in zoom-in-95 duration-300">
+                       <div className="flex items-center gap-4">
+                          <Avatar name={req.user?.full_name} size="md" className="ring-2 ring-primary-50 transition-all" />
+                          <div>
+                             <p className="text-sm font-bold text-surface-900">{req.user?.full_name}</p>
+                             <p className="text-xs text-primary-600/70 font-medium">{req.user?.email}</p>
+                          </div>
+                       </div>
+                       <div className="flex gap-2">
+                          <Button 
+                            size="sm" 
+                            variant="primary" 
+                            className="h-9 px-5 rounded-xl text-xs font-bold"
+                            onClick={() => handleAssignment(req.assignment_id, 'approved')}
+                          >
+                            Approve
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="ghost" 
+                            className="h-9 px-5 rounded-xl text-xs font-bold text-surface-400 hover:text-danger-600 hover:bg-danger-50"
+                            onClick={() => handleAssignment(req.assignment_id, 'rejected')}
+                          >
+                            Reject
+                          </Button>
+                       </div>
+                    </div>
+                  ))}
+               </div>
+            </div>
+          )}
           
           {showAddMediator && (
-            <div className="p-6 bg-surface-900 border-t border-surface-800 animate-in slide-in-from-top-4 duration-300">
-               <form onSubmit={handleCreateMediator} className="max-w-2xl mx-auto space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                     <div className="space-y-1">
-                        <label className="text-xs font-bold text-surface-300 uppercase tracking-wider ml-1">Full Name</label>
+            <div className="p-8 bg-surface-50 border-b border-surface-100 animate-in slide-in-from-top-4 duration-300">
+               <form onSubmit={handleCreateMediator} className="max-w-3xl mx-auto space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                     <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-surface-400 uppercase tracking-widest ml-1">Full Name</label>
                         <input 
-                           className="w-full bg-surface-800 border-surface-700 text-white rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500/50 outline-none transition-all placeholder:text-surface-600"
+                           className="w-full bg-white border border-surface-200 text-surface-900 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary-500/50 outline-none transition-all placeholder:text-surface-300 shadow-sm"
                            placeholder="John Doe"
                            value={newMediator.full_name}
                            onChange={e => setNewMediator({...newMediator, full_name: e.target.value})}
                         />
                      </div>
-                     <div className="space-y-1">
-                        <label className="text-xs font-bold text-surface-300 uppercase tracking-wider ml-1">Email Address</label>
+                     <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-surface-400 uppercase tracking-widest ml-1">Email Address</label>
                         <input 
                            type="email"
-                           className="w-full bg-surface-800 border-surface-700 text-white rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500/50 outline-none transition-all placeholder:text-surface-600"
+                           className="w-full bg-white border border-surface-200 text-surface-900 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary-500/50 outline-none transition-all placeholder:text-surface-300 shadow-sm"
                            placeholder="staff@example.com"
                            value={newMediator.email}
                            onChange={e => setNewMediator({...newMediator, email: e.target.value})}
                         />
                      </div>
-                     <div className="space-y-1">
-                        <label className="text-xs font-bold text-surface-300 uppercase tracking-wider ml-1">Temp Password</label>
+                     <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-surface-400 uppercase tracking-widest ml-1">Temp Password</label>
                         <div className="relative">
                            <input 
                               type="text"
-                              className="w-full bg-surface-800 border-surface-700 text-white rounded-xl pl-4 pr-10 py-2.5 text-sm focus:ring-2 focus:ring-primary-500/50 outline-none transition-all placeholder:text-surface-600"
+                              className="w-full bg-white border border-surface-200 text-surface-900 rounded-2xl pl-4 pr-10 py-3 text-sm focus:ring-2 focus:ring-primary-500/50 outline-none transition-all placeholder:text-surface-300 shadow-sm"
                               placeholder="Set initial password"
                               value={newMediator.password}
                               onChange={e => setNewMediator({...newMediator, password: e.target.value})}
                            />
-                           <Key className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-600" />
+                           <Key className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-300" />
                         </div>
                      </div>
                   </div>
-                  <div className="flex justify-end gap-3 pt-2">
-                     <Button variant="ghost" className="text-surface-400 hover:text-white" onClick={() => setShowAddMediator(false)}>Cancel</Button>
-                     <Button variant="primary" isLoading={isCreatingStaff} type="submit" icon={UserPlus}>Create Account</Button>
+                  <div className="flex justify-end gap-3">
+                     <Button 
+                       variant="ghost" 
+                       className="text-surface-500 hover:text-surface-900 rounded-xl px-6" 
+                       onClick={() => setShowAddMediator(false)}
+                     >
+                       Cancel
+                     </Button>
+                     <Button 
+                       variant="primary" 
+                       isLoading={isCreatingStaff} 
+                       type="submit" 
+                       icon={UserPlus}
+                       className="rounded-xl px-8"
+                     >
+                        Register Clinical Staff
+                     </Button>
                   </div>
                </form>
             </div>
@@ -453,13 +472,17 @@ export default function DoctorProfile() {
                                  </span>
                               </td>
                               <td className="px-6 py-4 text-center">
-                                 {mediator.is_approved ? (
+                                 {mediator.assignment_status === 'approved' ? (
                                     <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-full border border-green-100">
                                        <CheckCircle className="w-3 h-3" /> ACTIVE
                                     </span>
+                                 ) : mediator.assignment_status === 'suspended' ? (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-full border border-red-100">
+                                       <AlertCircle className="w-3 h-3" /> SUSPENDED
+                                    </span>
                                  ) : (
                                     <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-100">
-                                       <AlertCircle className="w-3 h-3" /> PENDING
+                                       <Clock className="w-3 h-3" /> PENDING
                                     </span>
                                  )}
                               </td>
@@ -467,11 +490,11 @@ export default function DoctorProfile() {
                                  <div className="flex items-center justify-end gap-2">
                                     <Button 
                                        size="sm" 
-                                       variant={mediator.is_approved ? 'ghost' : 'primary'} 
-                                       className={mediator.is_approved ? 'text-danger-600 hover:bg-danger-50' : ''}
-                                       onClick={() => toggleMediatorApproval(mediator.id, mediator.is_approved)}
+                                       variant={mediator.assignment_status === 'approved' ? 'ghost' : 'primary'} 
+                                       className={mediator.assignment_status === 'approved' ? 'text-danger-600 hover:bg-danger-50' : ''}
+                                       onClick={() => toggleMediatorApproval(mediator.id, mediator.assignment_id, mediator.assignment_status === 'approved')}
                                     >
-                                       {mediator.is_approved ? 'Suspend' : 'Approve Access'}
+                                       {mediator.assignment_status === 'approved' ? 'Suspend' : 'Approve Access'}
                                     </Button>
                                     <button 
                                        onClick={() => handleDeleteMediator(mediator.id, mediator.user_id)}

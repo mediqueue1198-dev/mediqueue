@@ -39,7 +39,7 @@ export default function PatientProfile() {
         })
       })
       .finally(() => setIsLoading(false))
-  }, [user?.id])
+  }, [user?.id, profile?.full_name, profile?.phone, reset])
 
   const onSubmit = async (data) => {
     setIsSaving(true)

@@ -169,14 +169,21 @@ export function calculatePriorityScore(
  */
 export function sortQueue(entries: QueueEntry[]): QueueEntry[] {
   return [...entries].sort((a, b) => {
-    if (a.status === 'in_consultation') return -1;
-    if (b.status === 'in_consultation') return 1;
+    // 1. Status priority
+    if (a.status !== b.status) {
+      if (a.status === 'in_consultation') return -1;
+      if (b.status === 'in_consultation') return 1;
+      
+      return (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99);
+    }
 
-    if (a.status === 'waiting' && b.status === 'waiting') {
+    // 2. Same status? Use priority_score
+    if (b.priority_score !== a.priority_score) {
       return b.priority_score - a.priority_score;
     }
 
-    return (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99);
+    // 3. Same score? Use created_at (FIFO)
+    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
   });
 }
 
