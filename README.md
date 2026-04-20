@@ -65,6 +65,15 @@ By leveraging **real-time database subscriptions** and an **intelligent, starvat
 - **Database Schema:** A highly relational model mapping Users, Profiles, Appointments, and Queue Entries.
 - **Automated Triggers:** Extensive use of PL/pgSQL database triggers to automatically manage appointment statuses and sync state.
 - **Modular Frontend Architecture:** Clean separation of concerns with isolated Context/Zustand stores, encapsulated custom hooks (e.g., `useQueue`), and granular UI components.
+- **Mediator Authorization:** A secure assignment system where staff (Mediators) must be approved by clinicians to access scoped data.
+
+---
+
+## 📖 Developer Documentation
+
+For a deep dive into the project's internal logic, workflows, and database architecture, please refer to the:
+
+👉 **[DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md)**
 
 ---
 
