@@ -174,7 +174,7 @@ CREATE TABLE IF NOT EXISTS public.appointments (
   family_member_id  UUID REFERENCES public.family_members(id),
   scheduled_time    TIMESTAMPTZ NOT NULL,
   duration_minutes  INTEGER DEFAULT 15,
-  status            TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'completed', 'cancelled', 'no_show')),
+  status            TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'completed', 'cancelled', 'no_show', 'rejected')),
   visit_type        TEXT NOT NULL DEFAULT 'first_visit' CHECK (visit_type IN ('first_visit', 'follow_up', 'emergency', 'walk_in')),
   symptoms          TEXT,
   notes             TEXT,
@@ -286,8 +286,16 @@ CREATE POLICY "medical_records_doctor_access" ON public.medical_records
   );
 
 -- Notifications Access
+DROP POLICY IF EXISTS "Users can manage their own notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Staff can send notifications" ON public.notifications;
+
 CREATE POLICY "Users can manage their own notifications" ON public.notifications
   FOR ALL USING (user_id = auth.uid());
+
+CREATE POLICY "Staff can send notifications" ON public.notifications
+  FOR INSERT WITH CHECK (
+    (SELECT role FROM public.users WHERE id = auth.uid()) IN ('doctor', 'mediator', 'admin', 'superadmin')
+  );
 
 -- 6. RPC FUNCTIONS
 -- ────────────────────────────────────────────────────────────
@@ -332,40 +340,52 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE OR REPLACE FUNCTION public.check_in_from_appointment(
   p_appointment_id UUID,
   p_doctor_id UUID,
-  p_token TEXT,
   p_priority_score INTEGER,
   p_predicted_time INTEGER
 )
-RETURNS JSON
+RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-  v_entry_id UUID;
-  v_user_id UUID;
   v_patient_id UUID;
-  v_scheduled_time TIMESTAMPTZ;
+  v_entry_id UUID;
+  v_token TEXT;
+  v_count INTEGER;
   v_duration_minutes INTEGER;
-  v_result JSON;
+  v_result JSONB;
+  v_symptoms TEXT;
+  v_full_name TEXT;
 BEGIN
   -- 1. Get appointment details
-  SELECT patient_id, scheduled_time, duration_minutes
-  INTO v_patient_id, v_scheduled_time, v_duration_minutes
-  FROM public.appointments
-  WHERE id = p_appointment_id;
+  SELECT 
+    patient_id, 
+    symptoms, 
+    duration_minutes 
+  INTO v_patient_id, v_symptoms, v_duration_minutes
+  FROM public.appointments 
+  WHERE id = p_appointment_id AND doctor_id = p_doctor_id;
 
   IF v_patient_id IS NULL THEN
-    RAISE EXCEPTION 'Appointment not found';
+    RAISE EXCEPTION 'Appointment not found or unauthorized';
   END IF;
 
-  -- 2. Verify authorization
-  IF (SELECT user_id FROM patients WHERE id = v_patient_id) != auth.uid() 
-     AND (SELECT public.get_user_role()) != 'mediator' 
-     AND (SELECT user_id FROM doctors WHERE id = p_doctor_id) != auth.uid() THEN
-    RAISE EXCEPTION 'Not authorized to check in to this appointment';
-  END IF;
+  -- Get patient full name from users table
+  SELECT u.full_name INTO v_full_name
+  FROM public.patients p
+  JOIN public.users u ON p.user_id = u.id
+  WHERE p.id = v_patient_id;
 
-  -- 3. Insert queue entry
+  -- 2. Generate Token
+  SELECT COUNT(*) + 1 INTO v_count 
+  FROM queue_entries 
+  WHERE doctor_id = p_doctor_id 
+    AND created_at::DATE = CURRENT_DATE
+    AND token_number LIKE 'AP%';
+  
+  v_token := 'AP' || LPAD(v_count::TEXT, 2, '0');
+
+  -- 3. Insert queue entry with symptoms and proper name
   INSERT INTO public.queue_entries (
     doctor_id,
     patient_id,
@@ -378,22 +398,24 @@ BEGIN
     check_in_status,
     check_in_time,
     arrival_status,
-    patient_name
+    patient_name,
+    symptoms
   ) 
-  SELECT 
+  VALUES (
     p_doctor_id,
     v_patient_id,
     p_appointment_id,
     'appointment',
-    p_token,
+    v_token,
     p_priority_score,
     COALESCE(v_duration_minutes, p_predicted_time),
     'waiting',
-    true,
+    TRUE,
     NOW(),
     'arrived',
-    p.patient_name
-  FROM patients p WHERE p.id = v_patient_id
+    COALESCE(v_full_name, 'Patient'),
+    v_symptoms
+  )
   RETURNING id INTO v_entry_id;
 
   -- 4. Update appointment status
@@ -401,13 +423,15 @@ BEGIN
   SET status = 'completed'
   WHERE id = p_appointment_id;
 
-  -- 5. Fetch full record
-  SELECT json_build_object(
+  -- 5. Fetch full record for return
+  SELECT jsonb_build_object(
     'id', q.id,
     'doctor_id', q.doctor_id,
     'patient_id', q.patient_id,
     'token_number', q.token_number,
-    'status', q.status
+    'status', q.status,
+    'patient_name', q.patient_name,
+    'symptoms', q.symptoms
   ) INTO v_result
   FROM queue_entries q
   WHERE q.id = v_entry_id;
@@ -495,7 +519,7 @@ END;
 $$;
 
 -- Call next patient
-CREATE OR REPLACE FUNCTION call_next_patient(p_doctor_id UUID)
+CREATE OR REPLACE FUNCTION public.call_next_patient(p_doctor_id UUID)
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -504,15 +528,17 @@ DECLARE
   v_next_entry RECORD;
 BEGIN
   SELECT * INTO v_next_entry
-  FROM queue_entries
-  WHERE doctor_id = p_doctor_id AND status = 'waiting'
+  FROM public.queue_entries
+  WHERE doctor_id = p_doctor_id 
+    AND status = 'waiting'
+    AND created_at::DATE = CURRENT_DATE
   ORDER BY priority_score DESC, created_at ASC
   LIMIT 1
   FOR UPDATE SKIP LOCKED;
 
   IF v_next_entry IS NULL THEN RETURN NULL; END IF;
 
-  UPDATE queue_entries
+  UPDATE public.queue_entries
   SET status = 'in_consultation', called_at = NOW(), updated_at = NOW()
   WHERE id = v_next_entry.id
   RETURNING * INTO v_next_entry;
@@ -550,10 +576,36 @@ DECLARE
   result JSONB;
 BEGIN
   SELECT jsonb_build_object(
-    'total_today', (SELECT count(*) FROM queue_entries q JOIN doctors d ON q.doctor_id = d.id WHERE d.hospital_id = p_hospital_id AND q.created_at >= CURRENT_DATE),
-    'active_queue', (SELECT count(*) FROM queue_entries q JOIN doctors d ON q.doctor_id = d.id WHERE d.hospital_id = p_hospital_id AND q.status IN ('waiting', 'in_consultation')),
-    'completed_today', (SELECT count(*) FROM queue_entries q JOIN doctors d ON q.doctor_id = d.id WHERE d.hospital_id = p_hospital_id AND q.status = 'completed' AND q.created_at >= CURRENT_DATE),
-    'avg_wait_time', (SELECT COALESCE(avg(EXTRACT(EPOCH FROM (consultation_started_at - created_at))/60), 0) FROM queue_entries q JOIN doctors d ON q.doctor_id = d.id WHERE d.hospital_id = p_hospital_id AND q.status IN ('in_consultation', 'completed') AND q.created_at >= CURRENT_DATE)
+    'total_today', (
+      SELECT count(*) 
+      FROM queue_entries q 
+      JOIN doctors d ON q.doctor_id = d.id 
+      WHERE (p_hospital_id IS NULL OR d.hospital_id = p_hospital_id) 
+        AND q.created_at >= CURRENT_DATE
+    ),
+    'active_queue', (
+      SELECT count(*) 
+      FROM queue_entries q 
+      JOIN doctors d ON q.doctor_id = d.id 
+      WHERE (p_hospital_id IS NULL OR d.hospital_id = p_hospital_id) 
+        AND q.status IN ('waiting', 'in_consultation')
+    ),
+    'completed_today', (
+      SELECT count(*) 
+      FROM queue_entries q 
+      JOIN doctors d ON q.doctor_id = d.id 
+      WHERE (p_hospital_id IS NULL OR d.hospital_id = p_hospital_id) 
+        AND q.status = 'completed' 
+        AND q.created_at >= CURRENT_DATE
+    ),
+    'avg_wait_time', (
+      SELECT COALESCE(avg(EXTRACT(EPOCH FROM (q.consultation_started_at - q.created_at))/60), 0)::INTEGER
+      FROM queue_entries q 
+      JOIN doctors d ON q.doctor_id = d.id 
+      WHERE (p_hospital_id IS NULL OR d.hospital_id = p_hospital_id) 
+        AND q.status IN ('in_consultation', 'completed') 
+        AND q.created_at >= CURRENT_DATE
+    )
   ) INTO result;
   RETURN result;
 END;
@@ -611,6 +663,52 @@ GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated, anon, service_role
 
 -- 9. TRIGGERS
 -- ────────────────────────────────────────────────────────────
+
+-- Notify patient on status change
+CREATE OR REPLACE FUNCTION public.notify_appointment_status_change()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_patient_user_id UUID;
+BEGIN
+  -- Notify patient when status changes to confirmed or rejected
+  IF (OLD.status IS NULL OR NEW.status != OLD.status) AND NEW.status IN ('confirmed', 'rejected') THEN
+    -- Get patient's User ID
+    SELECT user_id INTO v_patient_user_id
+    FROM public.patients WHERE id = NEW.patient_id;
+    
+    IF v_patient_user_id IS NOT NULL THEN
+      IF NEW.status = 'confirmed' THEN
+        INSERT INTO public.notifications (user_id, user_role, title, message, type, metadata)
+        VALUES (
+          v_patient_user_id,
+          'patient',
+          'Appointment Confirmed',
+          'Your appointment has been confirmed by the doctor. Please check-in when you arrive.',
+          'appointment',
+          jsonb_build_object('appointment_id', NEW.id, 'doctor_id', NEW.doctor_id)
+        );
+      ELSIF NEW.status = 'rejected' THEN
+        INSERT INTO public.notifications (user_id, user_role, title, message, type, metadata)
+        VALUES (
+          v_patient_user_id,
+          'patient',
+          'Appointment Rejected',
+          'Your appointment request has been rejected by the doctor. Please book a new appointment.',
+          'appointment',
+          jsonb_build_object('appointment_id', NEW.id, 'doctor_id', NEW.doctor_id, 'reason', COALESCE(NEW.notes, ''))
+        );
+      END IF;
+    END IF;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_appointment_status_change ON public.appointments;
+CREATE TRIGGER on_appointment_status_change
+  AFTER UPDATE OF status ON public.appointments
+  FOR EACH ROW EXECUTE FUNCTION public.notify_appointment_status_change();
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created

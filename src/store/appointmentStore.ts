@@ -15,7 +15,7 @@ export const useAppointmentStore = create<AppointmentState>()((set, get) => ({
       const { supabase } = await import('@/lib/supabase')
       let query = supabase
         .from('appointments')
-        .select('*, patient:users!patient_id(full_name, phone, email), doctor:doctors!doctor_id(*, user:users!user_id(full_name)), family_member:family_members(name, relationship)')
+        .select('*, patient:patients!patient_id(*, user:user_id(full_name, phone, email)), doctor:doctors!doctor_id(*, user:users!user_id(full_name)), family_member:family_members(name, relationship)')
         .order('scheduled_time', { ascending: false })
 
       if (filters.patient_id && isUuid(filters.patient_id)) query = query.eq('patient_id', filters.patient_id)
@@ -37,7 +37,7 @@ export const useAppointmentStore = create<AppointmentState>()((set, get) => ({
       const { data, error } = await supabase
         .from('appointments')
         .insert(appointmentData)
-        .select('*, patient:users!patient_id(full_name, phone, email), doctor:doctors!doctor_id(*, user:users!user_id(full_name)), family_member:family_members(name, relationship)')
+        .select('*, patient:patients!patient_id(*, user:user_id(full_name, phone, email)), doctor:doctors!doctor_id(*, user:users!user_id(full_name)), family_member:family_members(name, relationship)')
         .single()
       if (error) throw error
       

@@ -15,7 +15,7 @@ import Avatar from '@/components/ui/Avatar'
 import Badge from '@/components/ui/Badge'
 import { appointmentsService } from '@/services/appointments.service'
 import { Input, Select, Textarea } from '@/components/ui/Input'
-import Modal from '@/components/ui/Modal'
+import Modal, { ModalBody, ModalFooter } from '@/components/ui/Modal'
 
 const TABS = [
   { id: 'pending', label: 'Requests', icon: Clock },
@@ -186,10 +186,10 @@ export default function DoctorAppointments() {
                       <p className="text-2xl font-bold text-primary-700 font-display leading-none">{new Date(appt.scheduled_time).getDate()}</p>
                       <p className="text-xs text-primary-500">{new Date(appt.scheduled_time).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })}</p>
                     </div>
-                    <Avatar name={appt.family_member?.name || appt.patient_name || appt.patient?.full_name || 'Patient'} size="sm" />
+                    <Avatar name={appt.family_member?.name || appt.patient?.user?.full_name || appt.patient_name || appt.patient?.patient_name || 'Patient'} size="sm" />
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-surface-800">
-                        {appt.family_member?.name || appt.patient_name || appt.patient?.full_name}
+                        {appt.family_member?.name || appt.patient?.user?.full_name || appt.patient_name || appt.patient?.patient_name || 'Patient'}
                         {appt.family_member && <span className="text-xs font-normal text-surface-500 ml-2">({appt.family_member.relationship})</span>}
                       </p>
                       <p className="text-xs text-surface-500 mt-0.5 truncate">{appt.symptoms}</p>
@@ -245,7 +245,6 @@ export default function DoctorAppointments() {
                       <Button 
                         variant="danger" 
                         size="sm" 
-                        outline
                         onClick={() => handleReject(appt)}
                       >
                         <XCircle className="w-3.5 h-3.5" /> Reject
@@ -263,9 +262,8 @@ export default function DoctorAppointments() {
                   {appt.status === 'confirmed' && (
                     <div className="flex gap-2 justify-end pt-3 border-t border-surface-100">
                       <Button 
-                        variant="warning" 
+                        variant="ghost" 
                         size="sm" 
-                        outline
                         onClick={() => {
                           const dt = new Date(appt.scheduled_time)
                           setRescheduleDate(dt.toISOString().split('T')[0])
@@ -278,7 +276,6 @@ export default function DoctorAppointments() {
                       <Button 
                         variant="ghost" 
                         size="sm" 
-                        outline
                         onClick={() => handleSendReminder(appt.id)}
                         isLoading={sendingReminder === appt.id}
                       >
@@ -295,7 +292,7 @@ export default function DoctorAppointments() {
 
       {/* Add Charges Modal */}
       <Modal isOpen={showChargesModal} onClose={() => setShowChargesModal(false)} title="Add Additional Charges">
-        <div className="space-y-4">
+        <ModalBody className="space-y-4">
           <Select label="Charge Type" value={chargeType} onChange={(e) => setChargeType(e.target.value)}>
             <option value="medicine">Medicine</option>
             <option value="test">Lab Test</option>
@@ -318,18 +315,18 @@ export default function DoctorAppointments() {
             placeholder="Enter details..."
             rows={2}
           />
-          <div className="flex gap-3 pt-2">
-            <Button variant="secondary" className="flex-1" onClick={() => setShowChargesModal(false)}>Cancel</Button>
-            <Button className="flex-1" onClick={handleAddCharges}>Add Charges</Button>
-          </div>
-        </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" className="flex-1" onClick={() => setShowChargesModal(false)}>Cancel</Button>
+          <Button className="flex-1" onClick={handleAddCharges}>Add Charges</Button>
+        </ModalFooter>
       </Modal>
 
       {/* Reject Appointment Modal */}
       <Modal isOpen={!!rejectionAppointment} onClose={() => setRejectionAppointment(null)} title="Reject Appointment">
-        <div className="space-y-4">
+        <ModalBody className="space-y-4">
           <p className="text-sm text-surface-600">
-            You are rejecting the appointment for <strong>{rejectionAppointment?.patient_name || rejectionAppointment?.patient?.full_name}</strong>. 
+            You are rejecting the appointment for <strong>{rejectionAppointment?.patient?.user?.full_name || rejectionAppointment?.patient_name || 'Patient'}</strong>. 
             Please provide a reason so the patient knows why.
           </p>
           <Textarea
@@ -340,20 +337,20 @@ export default function DoctorAppointments() {
             rows={3}
             required
           />
-          <div className="flex gap-3 pt-2">
-            <Button variant="secondary" className="flex-1" onClick={() => setRejectionAppointment(null)}>Cancel</Button>
-            <Button variant="danger" className="flex-1" onClick={confirmReject}>Confirm Rejection</Button>
-          </div>
-        </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" className="flex-1" onClick={() => setRejectionAppointment(null)}>Cancel</Button>
+          <Button variant="danger" className="flex-1" onClick={confirmReject}>Confirm Rejection</Button>
+        </ModalFooter>
       </Modal>
 
       {/* Payment Modal */}
       <Modal isOpen={showPaymentModal} onClose={() => setShowPaymentModal(false)} title="Update Payment">
-        <div className="space-y-4">
+        <ModalBody className="space-y-4">
           <div className="p-4 bg-surface-50 rounded-xl">
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm text-surface-600">Patient</span>
-              <span className="font-medium text-surface-800">{selectedAppointment?.patient_name || selectedAppointment?.patient?.full_name}</span>
+              <span className="font-medium text-surface-800">{selectedAppointment?.patient?.user?.full_name || selectedAppointment?.patient_name || 'Patient'}</span>
             </div>
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm text-surface-600">Consultation Fee</span>
@@ -370,27 +367,27 @@ export default function DoctorAppointments() {
           </div>
           <p className="text-sm text-surface-600">Select payment status:</p>
           <div className="grid grid-cols-2 gap-3">
-            <Button variant="success" onClick={() => handleUpdatePayment('paid')} isLoading={updatingPayment}>
-              <DollarSign className="w-4 h-4" /> Mark Paid
+            <Button variant="success" size="sm" onClick={() => handleUpdatePayment('paid')} isLoading={updatingPayment}>
+              <DollarSign className="w-3.5 h-3.5" /> Mark Paid
             </Button>
-            <Button variant="warning" onClick={() => handleUpdatePayment('partial')} isLoading={updatingPayment}>
+            <Button variant="warning" size="sm" onClick={() => handleUpdatePayment('partial')} isLoading={updatingPayment}>
               Mark Partial
             </Button>
-            <Button variant="neutral" onClick={() => handleUpdatePayment('waived')} isLoading={updatingPayment}>
+            <Button variant="neutral" size="sm" onClick={() => handleUpdatePayment('waived')} isLoading={updatingPayment}>
               Waive Payment
             </Button>
-            <Button variant="secondary" onClick={() => setShowPaymentModal(false)}>
+            <Button variant="secondary" size="sm" onClick={() => setShowPaymentModal(false)}>
               Cancel
             </Button>
           </div>
-        </div>
+        </ModalBody>
       </Modal>
 
       {/* Reschedule Appointment Modal */}
       <Modal isOpen={!!rescheduleAppointment} onClose={() => setRescheduleAppointment(null)} title="Reschedule Appointment">
-        <div className="space-y-4">
+        <ModalBody className="space-y-4">
           <p className="text-sm text-surface-600">
-            Reschedule appointment for <strong>{rescheduleAppointment?.patient_name || rescheduleAppointment?.patient?.full_name}</strong>
+            Reschedule appointment for <strong>{rescheduleAppointment?.patient?.user?.full_name || rescheduleAppointment?.patient_name || 'Patient'}</strong>
           </p>
           <Input
             label="New Date"
@@ -405,11 +402,11 @@ export default function DoctorAppointments() {
             value={rescheduleTime}
             onChange={(e) => setRescheduleTime(e.target.value)}
           />
-          <div className="flex gap-3 pt-2">
-            <Button variant="secondary" className="flex-1" onClick={() => setRescheduleAppointment(null)}>Cancel</Button>
-            <Button className="flex-1" onClick={handleReschedule}>Reschedule</Button>
-          </div>
-        </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" className="flex-1" onClick={() => setRescheduleAppointment(null)}>Cancel</Button>
+          <Button className="flex-1" onClick={handleReschedule}>Reschedule</Button>
+        </ModalFooter>
       </Modal>
     </DashboardLayout>
   )

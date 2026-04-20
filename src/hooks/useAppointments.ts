@@ -13,7 +13,7 @@ export function useAppointments(filters: any = {}) {
   useEffect(() => {
     if (!user) return
     const f = { ...filters }
-    if (isPatient && !f.patient_id) f.patient_id = user.id
+    if (isPatient && !f.patient_id && profile?.patient_id) f.patient_id = profile.patient_id
     if (isDoctor && !f.doctor_id && profile?.doctor_id) f.doctor_id = profile.doctor_id
     
     loadAppointments(f)

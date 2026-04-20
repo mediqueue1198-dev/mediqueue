@@ -85,14 +85,16 @@ export function useQueue(doctorId: string | null = null) {
   [filteredEntries])
 
   const myEntry = useMemo(() => {
-    if (!user) return null
-    return filteredEntries.find(e => e.patient_id === user.id)
-  }, [user, filteredEntries])
+    const patientId = profile?.patient_id || user?.id
+    if (!patientId) return null
+    return filteredEntries.find(e => e.patient_id === patientId)
+  }, [user, profile, filteredEntries])
 
   const myPosition = useMemo(() => {
-    if (!myEntry || !user) return 0
-    return getPatientPosition(filteredEntries, user.id)
-  }, [myEntry, filteredEntries, user])
+    const patientId = profile?.patient_id || user?.id
+    if (!myEntry || !patientId) return 0
+    return getPatientPosition(filteredEntries, patientId)
+  }, [myEntry, filteredEntries, user, profile])
 
   useEffect(() => {
     const fetchDoctorAvg = async () => {

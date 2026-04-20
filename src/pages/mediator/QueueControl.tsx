@@ -60,7 +60,7 @@ export default function QueueControl() {
   if (isLoading && entries.length === 0) return <PageLoader />
 
   return (
-    <DashboardLayout title="Queue Control Panel" subtitle="Manage and adjust the hospital queue">
+    <DashboardLayout title="Queue Control Panel (Updated)" subtitle="Manage and adjust the hospital queue">
       <div className="max-w-5xl mx-auto space-y-5">
         {/* Filters */}
         <div className="flex items-center gap-4">
@@ -102,13 +102,20 @@ export default function QueueControl() {
                     </div>
 
                     {/* Avatar */}
-                    <Avatar name={entry.patient_name || entry.patient?.full_name} size="sm" className="flex-shrink-0" />
+                    <Avatar name={entry.patient?.user?.full_name || entry.patient_name || entry.patient?.patient_name} size="sm" className="flex-shrink-0" />
 
                     {/* Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <div>
-                          <p className="font-semibold text-surface-800">{entry.patient_name || entry.patient?.full_name}</p>
+                          <p className="font-semibold text-surface-800">
+                            {entry.patient?.user?.full_name || entry.patient_name || entry.patient?.patient_name || 'Anonymous Patient'}
+                          </p>
+                          {entry.symptoms && (
+                            <p className="text-xs text-surface-500 font-medium mt-1 bg-surface-50 px-2 py-1 rounded-lg border border-surface-100 inline-block">
+                              Reason: <span className="text-surface-600 font-semibold">{entry.symptoms}</span>
+                            </p>
+                          )}
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                             <span className="font-mono text-xs text-surface-600">{entry.token_number}</span>
                             <Badge variant={entry.queue_type === 'emergency' ? 'danger' : entry.queue_type === 'appointment' ? 'primary' : 'warning'}>

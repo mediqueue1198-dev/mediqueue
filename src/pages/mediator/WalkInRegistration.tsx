@@ -8,6 +8,7 @@ import Button from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { walkInSchema } from '@/utils/validators'
 import { useQueueStore } from '@/store/queueStore'
+import { useAuthStore } from '@/store/authStore'
 import { getSpecialtyIcon } from '@/utils/helpers'
 import toast from 'react-hot-toast'
 import * as z from 'zod'
@@ -20,18 +21,23 @@ export default function WalkInRegistration() {
   const { addWalkIn } = useQueueStore()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [lastToken, setLastToken] = useState<QueueEntry | null>(null)
+  const { profile } = useAuthStore()
   const [doctors, setDoctors] = useState<any[]>([])
   const [isLoadingDoctors, setIsLoadingDoctors] = useState(true)
 
   useEffect(() => {
     const fetchDoctors = async () => {
       const { doctorsService } = await import('@/services/doctors.service')
-      const data = await doctorsService.getAll()
+      const filters: any = {}
+      if (profile?.role === 'mediator' && profile?.approvedDoctorIds) {
+        filters.ids = profile.approvedDoctorIds
+      }
+      const data = await doctorsService.getAll(filters)
       setDoctors(data)
       setIsLoadingDoctors(false)
     }
     fetchDoctors()
-  }, [])
+  }, [profile?.approvedDoctorIds, profile?.role])
 
   const { register, handleSubmit, reset, watch, formState: { errors } } = useForm<WalkInFormValues>({
     resolver: zodResolver(walkInSchema),

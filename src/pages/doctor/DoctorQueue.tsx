@@ -331,7 +331,7 @@ export default function DoctorQueue() {
 
   return (
     <DashboardLayout
-      title="My Queue"
+      title="My Queue (v2.1)"
       subtitle={
         isOnBreak
           ? '⏸ Queue paused — on break'
@@ -452,7 +452,7 @@ export default function DoctorQueue() {
                     </div>
 
                     <Avatar
-                      name={entry.family_member?.name || entry.patient_name || entry.patient?.full_name || 'Patient'}
+                      name={entry.family_member?.name || entry.patient?.user?.full_name || entry.patient_name || entry.patient?.patient_name || 'Patient'}
                       size="sm"
                       className="flex-shrink-0"
                     />
@@ -462,13 +462,21 @@ export default function DoctorQueue() {
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="font-semibold text-surface-800">
-                            {entry.family_member?.name || entry.patient_name || entry.patient?.full_name || 'Patient'}
+                            {entry.family_member?.name || entry.patient?.user?.full_name || entry.patient_name || entry.patient?.patient_name || 'Patient'}
                             {entry.family_member && (
                               <span className="text-xs font-normal text-surface-500 ml-2">
                                 ({entry.family_member.relationship})
                               </span>
                             )}
                           </p>
+                          {entry.symptoms && (
+                            <div className="mt-1 flex items-center gap-1.5">
+                              <span className="text-[10px] font-bold text-surface-400 uppercase tracking-tight">Reason:</span>
+                              <span className="text-xs text-surface-600 bg-surface-50 px-2 py-0.5 rounded-md border border-surface-100">
+                                {entry.symptoms}
+                              </span>
+                            </div>
+                          )}
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                             <span className="text-xs text-surface-500">{entry.token_number}</span>
                             <Badge variant={queueTypeColor(entry.queue_type)}>
@@ -598,12 +606,12 @@ export default function DoctorQueue() {
                     return (
                       <div key={entry.id} className="flex items-center gap-3 px-4 py-3">
                         <Avatar
-                          name={entry.family_member?.name || entry.patient_name || entry.patient?.full_name || 'Patient'}
+                          name={entry.family_member?.name || entry.patient?.user?.full_name || entry.patient_name || entry.patient?.patient_name || 'Patient'}
                           size="xs"
                         />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-surface-700 truncate">
-                            {entry.family_member?.name || entry.patient_name || entry.patient?.full_name || 'Patient'}
+                            {entry.family_member?.name || entry.patient?.user?.full_name || entry.patient_name || entry.patient?.patient_name || 'Patient'}
                           </p>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="text-xs text-surface-400">{entry.token_number}</span>

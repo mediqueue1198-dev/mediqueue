@@ -1,45 +1,48 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Heart, Wifi, Clock } from 'lucide-react'
 import { useQueueStore } from '@/store/queueStore'
+import { useAuthStore } from '@/store/authStore'
+import { PageLoader } from '@/components/ui/LoadingSpinner'
 
 function DoctorBoard({ doctor, queue }) {
   const current = queue.find(e => e.status === 'in_consultation')
   const waiting = queue.filter(e => e.status === 'waiting').slice(0, 4)
 
   return (
-    <div className="bg-surface-800 rounded-3xl overflow-hidden flex flex-col">
+    <div className="bg-surface-800 rounded-3xl overflow-hidden flex flex-col shadow-lg border border-surface-700/50">
       {/* Doctor header */}
-      <div className="gradient-primary p-5">
-        <p className="text-white/70 text-sm font-medium">{doctor.specialization}</p>
-        <p className="text-white font-bold text-xl font-display">{doctor.user?.full_name}</p>
-        <p className="text-white/60 text-xs mt-1">{doctor.department}</p>
+      <div className="gradient-primary p-4">
+        <p className="text-white/70 text-[10px] font-bold uppercase tracking-wider">{doctor.specialization}</p>
+        <p className="text-white font-bold text-lg font-display truncate">{doctor.user?.full_name}</p>
+        <p className="text-white/60 text-[10px] mt-0.5 truncate">{doctor.department}</p>
       </div>
 
       {/* Now serving */}
-      <div className="p-5 border-b border-surface-700">
-        <p className="text-surface-400 text-xs font-semibold uppercase tracking-widest mb-3">Now Serving</p>
+      <div className="p-4 border-b border-surface-700/50">
+        <p className="text-surface-400 text-[10px] font-bold uppercase tracking-widest mb-2">Now Serving</p>
         {current ? (
-          <div className="flex items-center gap-4">
-            <div className="tv-token text-white flex-shrink-0" style={{ fontSize: '3.5rem' }}>
+          <div className="flex items-center gap-3">
+            <div className="tv-token text-white flex-shrink-0" style={{ fontSize: '2.5rem' }}>
               {current.token_number}
             </div>
             <div>
-              <div className="w-3 h-3 bg-medical-500 rounded-full animate-pulse mb-1" />
-              <p className="text-surface-300 text-sm">In Consultation</p>
+              <div className="w-2.5 h-2.5 bg-medical-500 rounded-full animate-pulse mb-0.5" />
+              <p className="text-surface-300 text-xs">In Consultation</p>
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-4">
-            <div className="text-surface-500 font-display font-bold" style={{ fontSize: '3rem' }}>—</div>
-            <p className="text-surface-500 text-sm">Queue Empty</p>
+          <div className="flex items-center gap-3">
+            <div className="text-surface-500 font-display font-bold" style={{ fontSize: '2rem' }}>—</div>
+            <p className="text-surface-500 text-xs">Queue Empty</p>
           </div>
         )}
       </div>
 
       {/* Next tokens */}
-      <div className="p-5 flex-1">
-        <p className="text-surface-400 text-xs font-semibold uppercase tracking-widest mb-3">Next In Queue</p>
-        <div className="space-y-2">
+      <div className="p-4 flex-1">
+        <p className="text-surface-400 text-[10px] font-bold uppercase tracking-widest mb-2">Next In Queue</p>
+        <div className="space-y-1.5">
           {waiting.length === 0 ? (
             <p className="text-surface-500 text-sm">No patients waiting</p>
           ) : (
@@ -67,21 +70,55 @@ function DoctorBoard({ doctor, queue }) {
 
 export default function QueueDisplayBoard() {
   const [currentTime, setCurrentTime] = useState(new Date())
+  const [searchParams] = useSearchParams()
+  const mediatorIdParam = searchParams.get('mediatorId')
+  
   const { entries, loadQueue } = useQueueStore()
+  const { profile, isLoading: isAuthLoading } = useAuthStore()
   const [doctors, setDoctors] = useState([])
+  const [isDoctorsLoading, setIsDoctorsLoading] = useState(true)
 
   useEffect(() => {
     loadQueue()
-    import('@/services/doctors.service').then(({ doctorsService }) => doctorsService.getAll().then(setDoctors))
+    
+    setIsDoctorsLoading(true)
+    import('@/services/doctors.service').then(async ({ doctorsService }) => {
+      const filters = {}
+      
+      // Priority 1: URL Parameter (for anonymous TV displays)
+      if (mediatorIdParam) {
+        const { data: assignments } = await (await import('@/lib/supabase')).default
+          .from('mediator_assignments')
+          .select('doctor_id')
+          .eq('mediator_id', mediatorIdParam)
+          .eq('status', 'approved')
+        
+        if (assignments && assignments.length > 0) {
+          filters.ids = assignments.map(a => a.doctor_id)
+        }
+      }
+      // Priority 2: Logged in Mediator Profile
+      else if (profile?.role === 'mediator' && profile?.approvedDoctorIds) {
+        filters.ids = profile.approvedDoctorIds
+      }
+      
+      doctorsService.getAll(filters)
+        .then(setDoctors)
+        .finally(() => setIsDoctorsLoading(false))
+    })
     
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(timer)
-  }, [loadQueue])
+  }, [loadQueue, profile?.approvedDoctorIds, profile?.role, mediatorIdParam])
 
   const getQueueForDoctor = (doctorId) =>
     entries.filter(e => e.doctor_id === doctorId)
 
   const activeDoctors = doctors.filter(d => d.is_available)
+
+  if (isAuthLoading || (isDoctorsLoading && doctors.length === 0)) {
+    return <PageLoader label="Loading display board..." />
+  }
 
   return (
     <div className="min-h-screen tv-mode p-6 select-none">
@@ -114,7 +151,7 @@ export default function QueueDisplayBoard() {
       </div>
 
       {/* Doctor boards */}
-      <div className={`grid gap-5 ${activeDoctors.length <= 2 ? 'grid-cols-2' : activeDoctors.length === 3 ? 'grid-cols-3' : 'grid-cols-4'}`}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {activeDoctors.map(doc => (
           <DoctorBoard
             key={doc.id}

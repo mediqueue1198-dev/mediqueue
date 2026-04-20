@@ -93,8 +93,8 @@ export default function ConsultationScreen() {
     try {
       await patientsService.addMedicalRecord({
         patient_id: currentPatient.patient_id,
-        patient_name: currentPatient.patient_name || currentPatient.patient?.full_name,
-        patient_phone: currentPatient.patient_phone || currentPatient.patient?.phone,
+        patient_name: currentPatient.patient?.user?.full_name || currentPatient.patient_name || currentPatient.patient?.patient_name || 'Patient',
+        patient_phone: currentPatient.patient_phone || currentPatient.patient?.user?.phone || currentPatient.patient?.phone,
         doctor_id: doctor?.id,
         appointment_id: currentPatient.appointment_id,
         queue_entry_id: currentPatient.id,
@@ -133,7 +133,7 @@ export default function ConsultationScreen() {
                 <CardBody className="p-6 text-center">
                   <div className="relative inline-block mb-4">
                     <Avatar 
-                      name={currentPatient.patient_name || currentPatient.patient?.full_name} 
+                      name={currentPatient.patient?.user?.full_name || currentPatient.patient_name || currentPatient.patient?.patient_name} 
                       size="2xl" 
                       className="mx-auto ring-4 ring-primary-50" 
                     />
@@ -143,7 +143,7 @@ export default function ConsultationScreen() {
                   </div>
                   
                   <h3 className="text-xl font-bold text-surface-900 font-display">
-                    {currentPatient.patient_name || currentPatient.patient?.full_name}
+                    {currentPatient.patient?.user?.full_name || currentPatient.patient_name || currentPatient.patient?.patient_name || 'Patient'}
                   </h3>
                   <p className="text-sm text-surface-500 font-medium">{currentPatient.token_number} • {currentPatient.queue_type?.toUpperCase()}</p>
                   

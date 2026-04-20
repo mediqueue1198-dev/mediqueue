@@ -70,10 +70,19 @@ export const useAuthStore = create<AuthState>()(
                   
                   if (mData) {
                     fullProfile.mediator_id = mData.id
-                    fullProfile.isApproved = mData.is_approved
                     fullProfile.hospital_id = mData.hospital_id
+                    
+                    // Also check for doctor assignments
+                    const { data: assignments } = await supabase
+                      .from('mediator_assignments')
+                      .select('doctor_id')
+                      .eq('mediator_id', mData.id)
+                      .eq('status', 'approved')
+                    
+                    fullProfile.approvedDoctorIds = assignments?.map(a => a.doctor_id) || []
+                    fullProfile.isApproved = mData.is_approved || fullProfile.approvedDoctorIds.length > 0
                   }
-                  break
+                  break;
               }
             }
             
@@ -258,7 +267,7 @@ export const useAuthStore = create<AuthState>()(
                   .eq('status', 'approved')
                 
                 fullProfile.approvedDoctorIds = assignments?.map(a => a.doctor_id) || []
-                fullProfile.isApproved = fullProfile.approvedDoctorIds.length > 0
+                fullProfile.isApproved = roleData.is_approved || fullProfile.approvedDoctorIds.length > 0
               }
             }
           }

@@ -73,7 +73,7 @@ function DoctorBreakBanner({ breakUntil, breakMessage }: DoctorBreakBannerProps)
 }
 
 export default function QueueStatus() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const { 
     entries, 
     myEntry, 
@@ -151,9 +151,10 @@ export default function QueueStatus() {
     await checkIn(myEntry.id)
   }
 
+  const patientId = profile?.patient_id || user?.id
   const waitingEntries = entries.filter(e => e.status === 'waiting' || e.status === 'in_consultation')
   const patientsAhead = myPosition > 0 
-    ? waitingEntries.filter(e => e.patient_id !== user?.id).slice(0, myPosition - 1).length 
+    ? waitingEntries.filter(e => e.patient_id !== patientId).slice(0, myPosition - 1).length 
     : 0
 
   const getPositionInQueue = (entryId: string) => {
@@ -249,9 +250,7 @@ export default function QueueStatus() {
                   </div>
                 ) : (
                   <div>
-                    <p className="text-4xl font-bold font-display mb-1">
-                      {myPosition === 0 ? 'Next!' : `#${myPosition}`}
-                    </p>
+
                     <p className="text-white/80 text-sm mb-2">
                       {myPosition <= 1 ? "You're next in line!" : `${patientsAhead} patient${patientsAhead !== 1 ? 's' : ''} ahead of you`}
                     </p>
@@ -448,7 +447,7 @@ export default function QueueStatus() {
                     {sortQueue(waitingEntries as any).map((entry, idx) => {
                       const position = getPositionInQueue(entry.id)
                       const estimatedWait = getEstimatedWaitForEntry(entry as QueueEntry)
-                      const isMe = entry.patient_id === user?.id
+                      const isMe = entry.patient_id === patientId
                       
                       return (
                         <div 

@@ -183,7 +183,7 @@ export const earningsService = {
 
     const { data, error } = await supabase
       .from('appointments')
-      .select('*, patient:users!patient_id(*)')
+      .select('*, patient:patients!patient_id(*, user:user_id(full_name, email, phone))')
       .eq('doctor_id', doctorId)
       .gte('scheduled_time', startOfDay.toISOString())
       .lte('scheduled_time', endOfDay.toISOString())

@@ -163,10 +163,10 @@ export default function BookAppointment() {
         }
       }
       
-      const finalPatientId = user?.id
+      const finalPatientId = profile?.patient_id || patientProfile?.id
       
       if (!finalPatientId) {
-        throw new Error('User session not found. Please log in again.')
+        throw new Error('Patient profile not found. Please complete your registration.')
       }
 
       console.log('Attempting to create appointment with data:', {

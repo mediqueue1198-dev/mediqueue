@@ -11,6 +11,7 @@ import { queueService } from '@/services/queue.service'
 import { QUEUE_STATUS_CONFIG } from '@/utils/helpers'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart as RechartsPie, Pie } from 'recharts'
 import { Link } from 'react-router-dom'
+import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
 import { PageLoader } from '@/components/ui/LoadingSpinner'
 import { useAuth } from '@/hooks/useAuth'
@@ -85,9 +86,14 @@ export default function MediatorDashboard() {
         return
       }
       try {
+        const filters = {}
+        if (profile?.role === 'mediator' && profile?.approvedDoctorIds) {
+          filters.ids = profile.approvedDoctorIds
+        }
+
         const [docs, metrics] = await Promise.allSettled([
-          import('@/services/doctors.service').then(m => m.doctorsService.getAll()),
-          queueService.getHospitalMetrics(profile?.hospital_id)
+          import('@/services/doctors.service').then(m => m.doctorsService.getAll(filters)),
+          queueService.getHospitalMetrics(profile?.hospital_id, filters.ids)
         ])
         
         if (docs.status === 'fulfilled') setDoctors(docs.value)
@@ -302,23 +308,25 @@ export default function MediatorDashboard() {
                <Badge variant="primary" dot pulse>LIVE UPDATES</Badge>
             </CardHeader>
             <CardBody className="h-[400px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stats?.hourly_distribution || []}>
-                   <defs>
+              {stats && (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={stats?.hourly_distribution || []}>
+                    <defs>
                       <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
-                         <stop offset="0%" stopColor="var(--primary-500)" stopOpacity={1} />
-                         <stop offset="100%" stopColor="var(--primary-700)" stopOpacity={1} />
+                        <stop offset="0%" stopColor="var(--primary-500)" stopOpacity={1} />
+                        <stop offset="100%" stopColor="var(--primary-700)" stopOpacity={1} />
                       </linearGradient>
-                   </defs>
-                  <XAxis dataKey="hour" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: 'var(--surface-400)'}} />
-                  <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fill: 'var(--surface-400)'}} />
-                  <Tooltip 
-                    cursor={{fill: 'var(--surface-50)'}}
-                    contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)'}}
-                  />
-                  <Bar dataKey="count" radius={[6, 6, 0, 0]} barSize={24} fill="url(#barGradient)" />
-                </BarChart>
-              </ResponsiveContainer>
+                    </defs>
+                    <XAxis dataKey="hour" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: 'var(--surface-400)'}} />
+                    <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fill: 'var(--surface-400)'}} />
+                    <Tooltip 
+                      cursor={{fill: 'var(--surface-50)'}}
+                      contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)'}}
+                    />
+                    <Bar dataKey="count" radius={[6, 6, 0, 0]} barSize={24} fill="url(#barGradient)" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </CardBody>
           </Card>
 
@@ -327,32 +335,36 @@ export default function MediatorDashboard() {
                <CardTitle className="text-lg flex items-center gap-2"><PieChart className="w-5 h-5 text-warning-500" /> Queue Segmentation</CardTitle>
             </CardHeader>
             <CardBody className="h-[400px] flex flex-col items-center justify-center">
-              <ResponsiveContainer width="100%" height={280}>
-                <RechartsPie>
-                  <Pie
-                    data={stats?.visit_type_dist || []}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={70}
-                    outerRadius={100}
-                    paddingAngle={8}
-                    dataKey="count"
-                  >
-                    {(stats?.visit_type_dist || []).map((entry: any, index: number) => (
-                      <Cell key={index} fill={['#6366f1', '#f59e0b', '#ef4444'][index % 3]} />
+              {stats && (
+                <>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <RechartsPie>
+                      <Pie
+                        data={stats?.visit_type_dist || []}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={70}
+                        outerRadius={100}
+                        paddingAngle={8}
+                        dataKey="count"
+                      >
+                        {(stats?.visit_type_dist || []).map((entry: any, index: number) => (
+                          <Cell key={index} fill={['#6366f1', '#f59e0b', '#ef4444'][index % 3]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </RechartsPie>
+                  </ResponsiveContainer>
+                  <div className="flex gap-6 mt-6">
+                    { (stats?.visit_type_dist || []).map((entry: any, idx: number) => (
+                      <div key={idx} className="text-center">
+                        <p className="text-lg font-bold text-surface-800">{entry.count}</p>
+                        <p className="text-[10px] uppercase font-bold text-surface-400 tracking-wider font-display">{entry.name}</p>
+                      </div>
                     ))}
-                  </Pie>
-                  <Tooltip />
-                </RechartsPie>
-              </ResponsiveContainer>
-              <div className="flex gap-6 mt-6">
-                 { (stats?.visit_type_dist || []).map((entry: any, idx: number) => (
-                   <div key={idx} className="text-center">
-                      <p className="text-lg font-bold text-surface-800">{entry.count}</p>
-                      <p className="text-[10px] uppercase font-bold text-surface-400 tracking-wider font-display">{entry.name}</p>
-                   </div>
-                 ))}
-              </div>
+                  </div>
+                </>
+              )}
             </CardBody>
           </Card>
         </div>
@@ -385,20 +397,32 @@ export default function MediatorDashboard() {
                      ))}
                   </div>
                </div>
-               <div className="p-6 bg-surface-50/30">
+                <div className="p-6 bg-surface-50/30">
                   <p className="text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-6">Recent Queue Movements</p>
                   <div className="space-y-6">
-                     {[1,2,3].map((_, i) => (
-                       <div key={i} className="flex items-start gap-4">
-                          <div className={`w-2 h-2 rounded-full mt-1.5 ${i === 0 ? 'bg-primary-500 animate-pulse' : 'bg-surface-300'}`} />
-                          <div>
-                             <p className="text-xs text-surface-700 font-medium">Token <span className="font-bold">#QM-0{45 + i}</span> checked in for Dr. Sharma</p>
-                             <p className="text-[10px] text-surface-400 mt-1">{i * 5 + 2} minutes ago</p>
-                          </div>
-                       </div>
-                     ))}
+                     {entries
+                        .filter(e => doctors.some(d => d.id === e.doctor_id))
+                        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                        .slice(0, 4)
+                        .map((entry, i) => {
+                          const doc = doctors.find(d => d.id === entry.doctor_id)
+                          return (
+                            <div key={entry.id} className="flex items-start gap-4 animate-in slide-in-from-right duration-300" style={{ animationDelay: `${i * 100}ms` }}>
+                               <div className={`w-2 h-2 rounded-full mt-1.5 ${i === 0 ? 'bg-primary-500 animate-pulse' : 'bg-surface-300'}`} />
+                               <div>
+                                  <p className="text-xs text-surface-700 font-medium">
+                                    Token <span className="font-bold">#{entry.token_number}</span> checked in for Dr. {doc?.user?.full_name || 'Clinician'}
+                                  </p>
+                                  <p className="text-[10px] text-surface-400 mt-1">{formatDistanceToNow(new Date(entry.created_at))} ago</p>
+                               </div>
+                            </div>
+                          )
+                        })}
+                     {entries.filter(e => doctors.some(d => d.id === e.doctor_id)).length === 0 && (
+                       <p className="text-xs text-surface-400 text-center py-8">No recent movements</p>
+                     )}
                   </div>
-               </div>
+                </div>
             </div>
           </CardBody>
         </Card>

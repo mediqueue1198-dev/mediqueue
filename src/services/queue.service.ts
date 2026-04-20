@@ -68,11 +68,24 @@ export const queueService = {
     return data
   },
 
-  async getHospitalMetrics(hospitalId?: string) {
-    const { data: metrics, error: mError } = await supabase.rpc('get_hospital_realtime_metrics', {
-      p_hospital_id: hospitalId
-    })
-    if (mError) throw mError
+  async getHospitalMetrics(hospitalId?: string, doctorIds?: string[]) {
+    let metrics = {
+      total_today: 0,
+      active_queue: 0,
+      completed_today: 0,
+      avg_wait_time: 0
+    }
+
+    if (hospitalId && isUuid(hospitalId) && !doctorIds) {
+      const { data, error: mError } = await supabase.rpc('get_hospital_realtime_metrics', {
+        p_hospital_id: hospitalId
+      })
+      if (mError) {
+        console.error('RPC Error:', mError)
+      } else {
+        metrics = data
+      }
+    }
 
     const startOfDay = new Date()
     startOfDay.setHours(0, 0, 0, 0)
@@ -92,6 +105,10 @@ export const queueService = {
       // Note: In a real app we might have hospital_id directly on queue_entries for performance
       docQuery = docQuery.eq('hospital_id', hospitalId)
     }
+    
+    if (doctorIds && doctorIds.length > 0) {
+      docQuery = docQuery.in('id', doctorIds)
+    }
 
     const [{ data: queueData, error: qError }, { count: doctorCount }] = await Promise.all([
       query,
@@ -100,10 +117,32 @@ export const queueService = {
 
     if (qError) throw qError
 
-    // Filter queueData by hospitalId if provided
-    const filteredQueue = hospitalId 
-      ? (queueData || []).filter(q => (q.doctor as any)?.hospital_id === hospitalId)
-      : (queueData || [])
+    // Filter queueData by hospitalId or doctorIds if provided
+    let filteredQueue = queueData || []
+    if (doctorIds && doctorIds.length > 0) {
+      filteredQueue = filteredQueue.filter(q => doctorIds.includes(q.doctor_id))
+    } else if (hospitalId) {
+      filteredQueue = filteredQueue.filter(q => (q.doctor as any)?.hospital_id === hospitalId)
+    }
+
+    // If we filtered by doctorIds, we need to recalculate the base metrics manually
+    // because the RPC was hospital-wide
+    if (doctorIds && doctorIds.length > 0) {
+      metrics.total_today = filteredQueue.length
+      metrics.active_queue = filteredQueue.filter(q => q.status === 'waiting' || q.status === 'in_consultation').length
+      metrics.completed_today = filteredQueue.filter(q => q.status === 'completed').length
+      
+      const finished = filteredQueue.filter(q => (q.status === 'in_consultation' || q.status === 'completed') && q.consultation_started_at)
+      if (finished.length > 0) {
+        const totalWait = finished.reduce((acc, q) => {
+          const wait = (new Date(q.consultation_started_at!).getTime() - new Date(q.created_at).getTime()) / (1000 * 60)
+          return acc + wait
+        }, 0)
+        metrics.avg_wait_time = Math.round(totalWait / finished.length)
+      } else {
+        metrics.avg_wait_time = 0
+      }
+    }
 
     // Group by hour for flow chart
     const hourlyMap: Record<string, number> = {}
@@ -118,14 +157,24 @@ export const queueService = {
       if (hourlyMap[label] !== undefined) hourlyMap[label]++
     })
 
-    const hourlyFlow = Object.entries(hourlyMap).map(([hour, patients]) => ({ hour, patients }))
+    const hourlyDistribution = Object.entries(hourlyMap).map(([hour, count]) => ({ hour, count }))
+
+    // Group by visit type
+    const visitTypeMap: Record<string, number> = { 'Appointment': 0, 'Walk-in': 0, 'Emergency': 0 }
+    filteredQueue.forEach(q => {
+      if (q.queue_type === 'appointment') visitTypeMap['Appointment']++
+      else if (q.queue_type === 'walk_in') visitTypeMap['Walk-in']++
+      else if (q.queue_type === 'emergency') visitTypeMap['Emergency']++
+    })
+    const visitTypeDist = Object.entries(visitTypeMap).map(([name, count]) => ({ name, count }))
 
     return {
       ...metrics,
       active_doctors: doctorCount || 0,
-      appointments_today: filteredQueue.filter(q => q.queue_type === 'appointment').length,
-      walk_ins_today: filteredQueue.filter(q => q.queue_type === 'walk_in').length,
-      hourly_flow: hourlyFlow,
+      appointments_today: visitTypeMap['Appointment'],
+      walk_ins_today: visitTypeMap['Walk-in'],
+      hourly_distribution: hourlyDistribution,
+      visit_type_dist: visitTypeDist
     }
   },
 

@@ -135,7 +135,7 @@ export function Sidebar() {
       {/* Display Board Link */}
       <div className="p-3 border-t border-surface-100">
         <a
-          href="/display"
+          href={role === 'mediator' && profile?.id ? `/display?mediatorId=${profile.id}` : "/display"}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-surface-600 hover:bg-surface-100 transition-colors"

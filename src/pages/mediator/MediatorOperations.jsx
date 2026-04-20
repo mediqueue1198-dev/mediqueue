@@ -215,7 +215,7 @@ export default function MediatorOperations() {
                     </div>
                     <p className="text-sm font-medium text-medical-600 mb-1">Registration Complete</p>
                     <p className="text-4xl font-bold font-display text-medical-900 mb-2">{lastToken.token_number}</p>
-                    <p className="text-sm text-medical-700 mb-6">Patient: {lastToken.patient_name || lastToken.patient?.full_name}</p>
+                    <p className="text-sm text-medical-700 mb-6">Patient: {lastToken.patient?.user?.full_name || lastToken.patient_name || lastToken.patient?.patient_name || 'Patient'}</p>
                     <Button variant="outline" size="sm" onClick={() => setLastToken(null)}>Dismiss</Button>
                   </CardBody>
                 </Card>
@@ -246,12 +246,19 @@ export default function MediatorOperations() {
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold font-display ${entry.status === 'in_consultation' ? 'bg-primary-100 text-primary-700' : 'bg-surface-100 text-surface-600'}`}>
                           {idx + 1}
                         </div>
-                        <Avatar name={entry.patient_name || entry.patient?.full_name} size="sm" />
+                        <Avatar name={entry.patient?.user?.full_name || entry.patient_name || entry.patient?.patient_name} size="sm" />
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-3">
-                            <span className="font-bold text-surface-900">{entry.patient_name || entry.patient?.full_name}</span>
-                            <Badge variant="neutral">{entry.token_number}</Badge>
-                            <Badge variant={entry.queue_type === 'emergency' ? 'danger' : 'primary'}>{QUEUE_TYPE_CONFIG[entry.queue_type]?.label}</Badge>
+                          <div className="flex flex-col">
+                            <div className="flex items-center gap-3">
+                              <span className="font-bold text-surface-900">{entry.patient?.user?.full_name || entry.patient_name || entry.patient?.patient_name || 'Anonymous Patient'}</span>
+                              <Badge variant="neutral">{entry.token_number}</Badge>
+                              <Badge variant={entry.queue_type === 'emergency' ? 'danger' : 'primary'}>{QUEUE_TYPE_CONFIG[entry.queue_type]?.label}</Badge>
+                            </div>
+                            {entry.symptoms && (
+                              <p className="text-[10px] text-surface-500 font-medium mt-0.5">
+                                Reason: <span className="text-surface-400 font-normal">{entry.symptoms}</span>
+                              </p>
+                            )}
                           </div>
                           <div className="flex items-center gap-4 mt-1 text-xs text-surface-500">
                             <span className="flex items-center gap-1"><Stethoscope className="w-3 h-3" /> {entry.doctor?.user?.full_name}</span>
@@ -320,7 +327,7 @@ export default function MediatorOperations() {
                               <div className="flex items-center gap-3">
                                 <Avatar name={rec.patient_name || 'Patient'} size="xs" />
                                 <div>
-                                  <p className="text-sm font-semibold text-surface-900">{rec.patient_name || 'Patient'}</p>
+                                  <p className="text-sm font-semibold text-surface-900">{rec.patient?.user?.full_name || rec.patient_name || 'Patient'}</p>
                                   <p className="text-[10px] text-surface-500 font-mono">{rec.patient_phone || 'N/A'}</p>
                                 </div>
                               </div>

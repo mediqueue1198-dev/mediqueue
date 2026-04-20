@@ -3,26 +3,33 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { Card, CardHeader, CardTitle, CardBody } from '@/components/ui/Card'
 import StatsCard from '@/components/ui/StatsCard'
 import { queueService } from '@/services/queue.service'
+import { useAuthStore } from '@/store/authStore'
 import { TrendingUp, Clock, Users, Star } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 export default function ReportsAnalytics() {
+  const { profile } = useAuthStore()
   const [stats, setStats] = useState(null)
   const [doctors, setDoctors] = useState([])
 
   useEffect(() => { 
-    queueService.getHospitalMetrics().then(setStats)
+    const filters: any = {}
+    if (profile?.role === 'mediator' && profile?.approvedDoctorIds) {
+      filters.ids = profile.approvedDoctorIds
+    }
+
+    queueService.getHospitalMetrics(profile?.hospital_id, filters.ids).then(setStats)
     import('@/services/doctors.service').then(({ doctorsService }) => {
-      doctorsService.getAll().then(setDoctors)
+      doctorsService.getAll(filters).then(setDoctors)
     })
-  }, [])
+  }, [profile?.hospital_id, profile?.approvedDoctorIds, profile?.role])
 
   if (!stats) return null
 
   const pieData = [
     { name: 'Appointments', value: stats.appointments_today, color: '#2563eb' },
     { name: 'Walk-ins', value: stats.walk_ins_today, color: '#f59e0b' },
-    { name: 'Waiting', value: stats.active_queues, color: '#10b981' },
+    { name: 'Active', value: stats.active_queue, color: '#10b981' },
   ]
 
   return (
@@ -31,8 +38,8 @@ export default function ReportsAnalytics() {
         {/* KPIs */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatsCard title="Avg Wait Time" value={`${stats.avg_wait_time ?? 0}m`} icon={Clock} color="warning" />
-          <StatsCard title="Daily Patients" value={stats.total_patients_today} icon={Users} color="primary" />
-          <StatsCard title="Consultations" value={stats.completed_consultations} icon={TrendingUp} color="success" />
+          <StatsCard title="Daily Patients" value={stats.total_today} icon={Users} color="primary" />
+          <StatsCard title="Consultations" value={stats.completed_today} icon={TrendingUp} color="success" />
           <StatsCard title="Active Doctors" value={stats.active_doctors} icon={Star} color="success" />
         </div>
 
@@ -42,11 +49,11 @@ export default function ReportsAnalytics() {
             <CardHeader><CardTitle>Weekly Patient Volume</CardTitle></CardHeader>
             <CardBody>
               <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={stats.hourly_flow} barSize={28}>
+                <BarChart data={stats.hourly_distribution} barSize={28}>
                   <XAxis dataKey="hour" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
-                  <Bar dataKey="patients" fill="#2563eb" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="count" fill="#2563eb" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </CardBody>
@@ -74,12 +81,12 @@ export default function ReportsAnalytics() {
           <CardHeader><CardTitle>Average Wait Time Trend (minutes)</CardTitle></CardHeader>
           <CardBody>
             <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={stats.hourly_flow}>
+              <LineChart data={stats.hourly_distribution}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis dataKey="hour" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                 <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
-                <Line type="monotone" dataKey="patients" stroke="#f59e0b" strokeWidth={2.5} dot={{ fill: '#f59e0b', r: 4 }} />
+                <Line type="monotone" dataKey="count" stroke="#f59e0b" strokeWidth={2.5} dot={{ fill: '#f59e0b', r: 4 }} />
               </LineChart>
             </ResponsiveContainer>
           </CardBody>

@@ -8,7 +8,7 @@ export const appointmentsService = {
   async getAll(filters: { patient_id?: string; doctor_id?: string; status?: AppointmentStatus } = {}): Promise<Appointment[]> {
     let query = supabase
       .from('appointments')
-      .select('*, patient:users!patient_id(*), doctor:doctors!doctor_id(*, user:users!user_id(full_name, email, phone))')
+      .select('*, patient:patients!patient_id(*, user:user_id(full_name, email, phone)), doctor:doctors!doctor_id(*, user:users!user_id(full_name, email, phone))')
       .order('scheduled_time', { ascending: false })
     
     if (filters.patient_id) query = query.eq('patient_id', filters.patient_id)
@@ -23,7 +23,7 @@ export const appointmentsService = {
   async getById(id: string): Promise<Appointment> {
     const { data, error } = await supabase
       .from('appointments')
-      .select('*, patient:users!patient_id(*), doctor:doctors!doctor_id(*, user:users!user_id(full_name, email, phone))')
+      .select('*, patient:patients!patient_id(*, user:user_id(full_name, email, phone)), doctor:doctors!doctor_id(*, user:users!user_id(full_name, email, phone))')
       .eq('id', id)
       .single()
     if (error) throw error
@@ -34,7 +34,7 @@ export const appointmentsService = {
     const { data, error } = await supabase
       .from('appointments')
       .insert(appointmentData)
-      .select('*, patient:users!patient_id(*), doctor:doctors!doctor_id(*, user:users!user_id(full_name, email, phone))')
+      .select('*, patient:patients!patient_id(*, user:user_id(full_name, email, phone)), doctor:doctors!doctor_id(*, user:users!user_id(full_name, email, phone))')
       .single()
     if (error) throw error
     return data as Appointment
@@ -45,7 +45,7 @@ export const appointmentsService = {
       .from('appointments')
       .update(updates)
       .eq('id', id)
-      .select()
+      .select('*, patient:patients!patient_id(*, user:user_id(full_name, email, phone)), doctor:doctors!doctor_id(*, user:users!user_id(full_name, email, phone))')
       .single()
     if (error) throw error
     return data as Appointment
@@ -56,37 +56,11 @@ export const appointmentsService = {
   },
 
   async approve(id: string): Promise<Appointment> {
-    const appointment = await this.update(id, { status: 'confirmed' })
-    
-    try {
-      await this.createNotification({
-        user_id: appointment.patient_id!,
-        title: 'Appointment Confirmed',
-        content: `Your appointment has been confirmed.`,
-        type: 'appointment_confirmed',
-      })
-    } catch (err) {
-      console.error('Failed to send confirmation notification:', err)
-    }
-
-    return appointment
+    return this.update(id, { status: 'confirmed' })
   },
 
   async reject(id: string, reason: string = ''): Promise<Appointment> {
-    const appointment = await this.update(id, { status: 'rejected', notes: reason })
-    
-    try {
-      await this.createNotification({
-        user_id: appointment.patient_id!,
-        title: 'Appointment Rejected',
-        content: `Your appointment request has been rejected. ${reason}`,
-        type: 'appointment_rejected',
-      })
-    } catch (err) {
-      console.error('Failed to send rejection notification:', err)
-    }
-
-    return appointment
+    return this.update(id, { status: 'rejected', notes: reason })
   },
 
   async createNotification(notificationData: { user_id: string; title: string; content?: string; message?: string; type: string }) {
@@ -137,7 +111,7 @@ export const appointmentsService = {
 
     const { data, error } = await supabase
       .from('appointments')
-      .select('*, patient:patient_id(*)')
+      .select('*, patient:patients!patient_id(*, user:user_id(full_name, email, phone))')
       .eq('doctor_id', doctorId)
       .gte('scheduled_time', startOfDay.toISOString())
       .lte('scheduled_time', endOfDay.toISOString())
@@ -175,7 +149,7 @@ export const appointmentsService = {
       .from('appointments')
       .update(updates)
       .eq('id', id)
-      .select('*, patient:users!patient_id(*), doctor:doctors!doctor_id(*, user:users!user_id(full_name, email, phone))')
+      .select('*, patient:patients!patient_id(*, user:user_id(full_name, email, phone)), doctor:doctors!doctor_id(*, user:users!user_id(full_name, email, phone))')
       .single()
     if (error) throw error
     return data as Appointment
@@ -205,7 +179,7 @@ export const appointmentsService = {
         total_amount: totalAmount
       })
       .eq('id', id)
-      .select('*, patient:users!patient_id(*), doctor:doctors!doctor_id(*, user:users!user_id(full_name, email, phone))')
+      .select('*, patient:patients!patient_id(*, user:user_id(full_name, email, phone)), doctor:doctors!doctor_id(*, user:users!user_id(full_name, email, phone))')
       .single()
     if (error) throw error
     return data as Appointment

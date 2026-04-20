@@ -6,19 +6,27 @@ import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import Avatar from '@/components/ui/Avatar'
 import { useQueueStore } from '@/store/queueStore'
+import { useAuthStore } from '@/store/authStore'
 import { getSpecialtyIcon } from '@/utils/helpers'
 import toast from 'react-hot-toast'
 
 export default function DoctorManagement() {
   const [doctors, setDoctors] = useState([])
+  const { profile } = useAuthStore()
   const { entries, loadQueue } = useQueueStore()
 
   useEffect(() => {
     import('@/services/doctors.service').then(({ doctorsService }) => {
-      doctorsService.getAll().then(setDoctors)
+      // If mediator, only fetch assigned doctors
+      const filters = {}
+      if (profile?.role === 'mediator' && profile?.approvedDoctorIds) {
+        filters.ids = profile.approvedDoctorIds
+      }
+      
+      doctorsService.getAll(filters).then(setDoctors)
     })
     loadQueue()
-  }, [])
+  }, [profile?.approvedDoctorIds, profile?.role])
 
   const toggleAvailability = (doctorId) => {
     setDoctors(prev =>
